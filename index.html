@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IAR - Exámenes de Residencias Médicas</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Prevenir selección de texto */
+        * {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        input, textarea {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+        @media print {
+            body { display: none !important; }
+        }
+
+        /* Botón Reiniciar Examen */
+        .btn-reiniciar {
+            background: linear-gradient(135deg, #e67e22 0%, #ca6f1e 100%);
+            color: white;
+            border: none;
+            padding: 11px 22px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 0 8px 20px 0;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .btn-reiniciar:hover {
+            background: linear-gradient(135deg, #ca6f1e 0%, #a85d19 100%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transform: translateY(-1px);
+        }
+        .btn-reiniciar:active { transform: translateY(0); }
+    </style>
+
+</head>
+<body>
+
+    <!-- ======== MENÚ PRINCIPAL ======== -->
+    <div id="menu-principal" class="menu-principal">
+        <h1>IAR</h1>
+        <p style="text-align: center; color: white; margin-top: -30px; margin-bottom: 40px; font-size: 1.1rem;">Sistema de Preparación para el Examen IAR</p>
+
+        <div class="container">
+            <!-- Columna única con opciones IAR -->
+            <div class="columna">
+                <h2>EXÁMENES</h2>
+                <ul>
+                    <li onclick="mostrarSubmenu('iar-submenu')">IAR</li>
+                    <li onclick="mostrarCuestionario('simulacro_iar')">SIMULACRO EXAMEN IAR</li>
+                    <li onclick="mostrarRespuestasCorrectas()" style="color:#065f46; background:linear-gradient(90deg,#d1fae5 0%,#ecfdf5 100%); border-color:#6ee7b7; font-weight:600;">📋 Ver Respuestas Correctas</li>
+                </ul>
+            </div>
+        </div>
+
+        <div style="text-align:center; margin-top:24px; margin-bottom:10px;">
+            <button class="btn-buscador" onclick="mostrarBuscador()">🔍 Buscador de Preguntas</button>
+        </div>
+
+        <div class="info-extra">
+            <br>
+                👥 Visitas: <span id="contador-visitas">...</span>
+                <script>
+                window.addEventListener('load', function() {
+                    fetch('https://examenesiaruba.goatcounter.com/counter/TOTAL.json')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        document.getElementById('contador-visitas').textContent = data.count;
+                    })
+                    .catch(function() {
+                        document.getElementById('contador-visitas').textContent = 'N/D';
+                    });
+                });
+                </script>
+
+        </div>
+    </div>
+
+    <!-- ======== BUSCADOR DE PREGUNTAS ======== -->
+    <div id="buscador-preguntas" class="menu-principal oculto">
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>🔍 Buscador de Preguntas</h1>
+        <div class="buscador-container">
+            <div class="buscador-input-wrap">
+                <input type="text" id="buscador-input" class="buscador-input"
+                    placeholder="Escribí una palabra o frase para buscar en enunciados y opciones..."
+                    autocomplete="off" spellcheck="false"
+                    oninput="realizarBusqueda(this.value)" />
+                <button class="buscador-limpiar" onclick="limpiarBusqueda()" title="Limpiar">✕</button>
+            </div>
+            <div id="buscador-stats" class="buscador-stats" style="display:none;"></div>
+            <div id="buscador-resultados" class="buscador-resultados"></div>
+        </div>
+    </div>
+
+    <!-- Botón flotante: Volver al Buscador -->
+    <button id="btn-volver-buscador" class="btn-volver-buscador" onclick="volverAlBuscador()" style="display:none;">
+        ← Volver al Buscador
+    </button>
+
+    <!-- ======== SUBMENÚ IAR ======== -->
+    <div id="iar-submenu" class="menu-principal" style="display: none;">
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>IAR</h1>
+        <div class="container">
+            <!-- Columna 1: 2020 y 2021 -->
+            <div class="columna">
+                <h2>2020</h2>
+                <ul>
+                    <li onclick="mostrarCuestionario('iarsep2020')">SEP 2020</li>
+                    <li onclick="mostrarCuestionario('iaroct2020')">OCT 2020</li>
+                    <li onclick="mostrarCuestionario('iarnov2020')">NOV 2020</li>
+                    <li onclick="mostrarCuestionario('iardic2020')">DIC 2020</li>
+                </ul>
+                <h2 style="margin-top: 20px;">2021</h2>
+                <ul>
+                    <li onclick="mostrarCuestionario('iarfeb2021')">FEB 2021</li>
+                    <li onclick="mostrarCuestionario('iarmar2021')">MAR 2021</li>
+                    <li onclick="mostrarCuestionario('iarabr2021')">ABR 2021</li>
+                    <li onclick="mostrarCuestionario('iarmay2021')">MAY 2021</li>
+                    <li onclick="mostrarCuestionario('iarjun2021')">JUN 2021</li>
+                    <li onclick="mostrarCuestionario('iarago2021')">AGO 2021</li>
+                    <li onclick="mostrarCuestionario('iarsep2021')">SEP 2021</li>
+                    <li onclick="mostrarCuestionario('iarnov2021')">NOV 2021</li>
+                    <li onclick="mostrarCuestionario('iardic2021')">DIC 2021</li>
+                </ul>
+            </div>
+            <!-- Columna 2: 2022 y 2023 -->
+            <div class="columna">
+                <h2>2022</h2>
+                <ul>
+                    <li onclick="mostrarCuestionario('iarmar2022')">MAR 2022</li>
+                    <li onclick="mostrarCuestionario('iarabr2022')">ABR 2022</li>
+                    <li onclick="mostrarCuestionario('iarjun2022')">JUN 2022</li>
+                    <li onclick="mostrarCuestionario('iarago2022')">AGO 2022</li>
+                    <li onclick="mostrarCuestionario('iaroct2022')">OCT 2022</li>
+                    <li onclick="mostrarCuestionario('iardic2022')">DIC 2022</li>
+                </ul>
+                <h2 style="margin-top: 20px;">2023</h2>
+                <ul>
+                    <li onclick="mostrarCuestionario('iarmar2023')">MAR 2023</li>
+                    <li onclick="mostrarCuestionario('iarabr2023')">ABR 2023</li>
+                    <li onclick="mostrarCuestionario('iarmay2023')">MAY 2023</li>
+                    <li onclick="mostrarCuestionario('iarjun2023')">JUN 2023</li>
+                    <li onclick="mostrarCuestionario('iarago2023')">AGO 2023</li>
+                    <li onclick="mostrarCuestionario('iaroct2023')">OCT 2023</li>
+                    <li onclick="mostrarCuestionario('iardic2023')">DIC 2023</li>
+                </ul>
+            </div>
+            <!-- Columna 3: 2024 y 2025 -->
+            <div class="columna">
+                <h2>2024</h2>
+                <ul>
+                    <li onclick="mostrarCuestionario('iarfeb2024')">FEB 2024</li>
+                    <li onclick="mostrarCuestionario('iarmar2024')">MAR 2024</li>
+                    <li onclick="mostrarCuestionario('iarabr2024')">ABR 2024</li>
+                    <li onclick="mostrarCuestionario('iarmay2024')">MAY 2024</li>
+                    <li onclick="mostrarCuestionario('iarjun2024')">JUN 2024</li>
+                    <li onclick="mostrarCuestionario('iarago2024')">AGO 2024</li>
+                    <li onclick="mostrarCuestionario('iarsep2024')">SEP 2024</li>
+                    <li onclick="mostrarCuestionario('iaroct2024')">OCT 2024</li>
+                    <li onclick="mostrarCuestionario('iarnov2024')">NOV 2024</li>
+                    <li onclick="mostrarCuestionario('iardic2024')">DIC 2024</li>
+                </ul>
+                <h2 style="margin-top: 20px;">2025</h2>
+                <ul>
+                    <li onclick="mostrarCuestionario('iarfeb2025')">FEB 2025</li>
+                    <li onclick="mostrarCuestionario('iarmar2025')">MAR 2025</li>
+                    <li onclick="mostrarCuestionario('iarabr2025')">ABR 2025</li>
+                    <li onclick="mostrarCuestionario('iarmay2025')">MAY 2025</li>
+                    <li onclick="mostrarCuestionario('iarjun2025')">JUN 2025</li>
+                    <li onclick="mostrarCuestionario('iarago2025')">AGO 2025</li>
+                    <li onclick="mostrarCuestionario('iarsep2025')">SEP 2025</li>
+                    <li onclick="mostrarCuestionario('iaroct2025')">OCT 2025</li>
+                    <li onclick="mostrarCuestionario('iarnov2025')">NOV 2025</li>
+                    <li onclick="mostrarCuestionario('iardic2025')">DIC 2025</li>
+                </ul>
+                <h2 style="margin-top: 20px;">OTROS IAR</h2>
+                <ul>
+                    <li onclick="mostrarSubmenu('otros-iar-submenu')">OTROS IAR</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======== SUBMENÚ OTROS IAR ======== -->
+    <div id="otros-iar-submenu" class="menu-principal" style="display: none;">
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <button class="btn-volver" onclick="mostrarSubmenu('iar-submenu')">← Volver a IAR</button>
+        <h1>OTROS IAR</h1>
+        <div class="container">
+            <div class="columna">
+                <h2>Seleccione el examen</h2>
+                <ul>
+                    <li onclick="mostrarCuestionario('otros1')">1</li>
+                    <li onclick="mostrarCuestionario('otros2')">2</li>
+                    <li onclick="mostrarCuestionario('otros3')">3</li>
+                    <li onclick="mostrarCuestionario('otros4')">4</li>
+                    <li onclick="mostrarCuestionario('otros5')">5</li>
+                    <li onclick="mostrarCuestionario('otros6')">6</li>
+                    <li onclick="mostrarCuestionario('otros7')">7</li>
+                    <li onclick="mostrarCuestionario('otros8')">8</li>
+                    <li onclick="mostrarCuestionario('otros9')">9</li>
+                    <li onclick="mostrarCuestionario('otros10')">10</li>
+                    <li onclick="mostrarCuestionario('otros11')">11</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======== CUESTIONARIOS OTROS IAR ======== -->
+
+    <!-- otros IAR 1 -->
+    <div id="otros1" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 1</h1>
+        <div id="cuestionario-otros1"></div>
+        <button id="mostrar-total-otros1">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros1" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros1')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 2 -->
+    <div id="otros2" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 2</h1>
+        <div id="cuestionario-otros2"></div>
+        <button id="mostrar-total-otros2">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros2" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros2')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 3 -->
+    <div id="otros3" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 3</h1>
+        <div id="cuestionario-otros3"></div>
+        <button id="mostrar-total-otros3">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros3" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros3')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 4 -->
+    <div id="otros4" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 4</h1>
+        <div id="cuestionario-otros4"></div>
+        <button id="mostrar-total-otros4">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros4" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros4')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 5 -->
+    <div id="otros5" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 5</h1>
+        <div id="cuestionario-otros5"></div>
+        <button id="mostrar-total-otros5">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros5" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros5')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 6 -->
+    <div id="otros6" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 6</h1>
+        <div id="cuestionario-otros6"></div>
+        <button id="mostrar-total-otros6">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros6" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros6')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 7 -->
+    <div id="otros7" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 7</h1>
+        <div id="cuestionario-otros7"></div>
+        <button id="mostrar-total-otros7">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros7" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros7')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 8 -->
+    <div id="otros8" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 8</h1>
+        <div id="cuestionario-otros8"></div>
+        <button id="mostrar-total-otros8">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros8" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros8')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 9 -->
+    <div id="otros9" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 9</h1>
+        <div id="cuestionario-otros9"></div>
+        <button id="mostrar-total-otros9">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros9" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros9')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 10 -->
+    <div id="otros10" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 10</h1>
+        <div id="cuestionario-otros10"></div>
+        <button id="mostrar-total-otros10">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros10" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros10')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- otros IAR 11 -->
+    <div id="otros11" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>OTROS IAR 11</h1>
+        <div id="cuestionario-otros11"></div>
+        <button id="mostrar-total-otros11">Mostrar Puntuación Total</button>
+        <div id="resultado-total-otros11" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('otros-iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('otros11')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- ======== CUESTIONARIOS IAR MENSUALES ======== -->
+
+    <!-- IAR SEP 2020 -->
+    <div id="iarsep2020" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR SEP 2020</h1>
+        <div id="cuestionario-iarsep2020"></div>
+        <button id="mostrar-total-iarsep2020">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarsep2020" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarsep2020')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR OCT 2020 -->
+    <div id="iaroct2020" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR OCT 2020</h1>
+        <div id="cuestionario-iaroct2020"></div>
+        <button id="mostrar-total-iaroct2020">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iaroct2020" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iaroct2020')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR NOV 2020 -->
+    <div id="iarnov2020" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR NOV 2020</h1>
+        <div id="cuestionario-iarnov2020"></div>
+        <button id="mostrar-total-iarnov2020">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarnov2020" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarnov2020')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR DIC 2020 -->
+    <div id="iardic2020" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR DIC 2020</h1>
+        <div id="cuestionario-iardic2020"></div>
+        <button id="mostrar-total-iardic2020">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iardic2020" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iardic2020')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR ENE 2021 -->
+    <div id="iarene2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR ENE 2021</h1>
+        <div id="cuestionario-iarene2021"></div>
+        <button id="mostrar-total-iarene2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarene2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarene2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR FEB 2021 -->
+    <div id="iarfeb2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR FEB 2021</h1>
+        <div id="cuestionario-iarfeb2021"></div>
+        <button id="mostrar-total-iarfeb2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarfeb2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarfeb2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAR 2021 -->
+    <div id="iarmar2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAR 2021</h1>
+        <div id="cuestionario-iarmar2021"></div>
+        <button id="mostrar-total-iarmar2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmar2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmar2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR ABR 2021 -->
+    <div id="iarabr2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR ABR 2021</h1>
+        <div id="cuestionario-iarabr2021"></div>
+        <button id="mostrar-total-iarabr2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarabr2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarabr2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAY 2021 -->
+    <div id="iarmay2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAY 2021</h1>
+        <div id="cuestionario-iarmay2021"></div>
+        <button id="mostrar-total-iarmay2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmay2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmay2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR JUN 2021 -->
+    <div id="iarjun2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR JUN 2021</h1>
+        <div id="cuestionario-iarjun2021"></div>
+        <button id="mostrar-total-iarjun2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarjun2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarjun2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR AGO 2021 -->
+    <div id="iarago2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR AGO 2021</h1>
+        <div id="cuestionario-iarago2021"></div>
+        <button id="mostrar-total-iarago2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarago2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarago2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR SEP 2021 -->
+    <div id="iarsep2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR SEP 2021</h1>
+        <div id="cuestionario-iarsep2021"></div>
+        <button id="mostrar-total-iarsep2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarsep2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarsep2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR NOV 2021 -->
+    <div id="iarnov2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR NOV 2021</h1>
+        <div id="cuestionario-iarnov2021"></div>
+        <button id="mostrar-total-iarnov2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarnov2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarnov2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR DIC 2021 -->
+    <div id="iardic2021" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR DIC 2021</h1>
+        <div id="cuestionario-iardic2021"></div>
+        <button id="mostrar-total-iardic2021">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iardic2021" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iardic2021')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAR 2022 -->
+    <div id="iarmar2022" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAR 2022</h1>
+        <div id="cuestionario-iarmar2022"></div>
+        <button id="mostrar-total-iarmar2022">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmar2022" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmar2022')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR ABR 2022 -->
+    <div id="iarabr2022" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR ABR 2022</h1>
+        <div id="cuestionario-iarabr2022"></div>
+        <button id="mostrar-total-iarabr2022">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarabr2022" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarabr2022')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR JUN 2022 -->
+    <div id="iarjun2022" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR JUN 2022</h1>
+        <div id="cuestionario-iarjun2022"></div>
+        <button id="mostrar-total-iarjun2022">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarjun2022" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarjun2022')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR AGO 2022 -->
+    <div id="iarago2022" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR AGO 2022</h1>
+        <div id="cuestionario-iarago2022"></div>
+        <button id="mostrar-total-iarago2022">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarago2022" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarago2022')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR OCT 2022 -->
+    <div id="iaroct2022" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR OCT 2022</h1>
+        <div id="cuestionario-iaroct2022"></div>
+        <button id="mostrar-total-iaroct2022">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iaroct2022" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iaroct2022')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR DIC 2022 -->
+    <div id="iardic2022" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR DIC 2022</h1>
+        <div id="cuestionario-iardic2022"></div>
+        <button id="mostrar-total-iardic2022">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iardic2022" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iardic2022')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAR 2023 -->
+    <div id="iarmar2023" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAR 2023</h1>
+        <div id="cuestionario-iarmar2023"></div>
+        <button id="mostrar-total-iarmar2023">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmar2023" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmar2023')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR ABR 2023 -->
+    <div id="iarabr2023" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR ABR 2023</h1>
+        <div id="cuestionario-iarabr2023"></div>
+        <button id="mostrar-total-iarabr2023">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarabr2023" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarabr2023')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAY 2023 -->
+    <div id="iarmay2023" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAY 2023</h1>
+        <div id="cuestionario-iarmay2023"></div>
+        <button id="mostrar-total-iarmay2023">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmay2023" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmay2023')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR JUN 2023 -->
+    <div id="iarjun2023" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR JUN 2023</h1>
+        <div id="cuestionario-iarjun2023"></div>
+        <button id="mostrar-total-iarjun2023">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarjun2023" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarjun2023')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR AGO 2023 -->
+    <div id="iarago2023" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR AGO 2023</h1>
+        <div id="cuestionario-iarago2023"></div>
+        <button id="mostrar-total-iarago2023">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarago2023" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarago2023')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR OCT 2023 -->
+    <div id="iaroct2023" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR OCT 2023</h1>
+        <div id="cuestionario-iaroct2023"></div>
+        <button id="mostrar-total-iaroct2023">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iaroct2023" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iaroct2023')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR DIC 2023 -->
+    <div id="iardic2023" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR DIC 2023</h1>
+        <div id="cuestionario-iardic2023"></div>
+        <button id="mostrar-total-iardic2023">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iardic2023" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iardic2023')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR FEB 2024 -->
+    <div id="iarfeb2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR FEB 2024</h1>
+        <div id="cuestionario-iarfeb2024"></div>
+        <button id="mostrar-total-iarfeb2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarfeb2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarfeb2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAR 2024 -->
+    <div id="iarmar2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAR 2024</h1>
+        <div id="cuestionario-iarmar2024"></div>
+        <button id="mostrar-total-iarmar2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmar2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmar2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR ABR 2024 -->
+    <div id="iarabr2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR ABR 2024</h1>
+        <div id="cuestionario-iarabr2024"></div>
+        <button id="mostrar-total-iarabr2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarabr2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarabr2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAY 2024 -->
+    <div id="iarmay2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAY 2024</h1>
+        <div id="cuestionario-iarmay2024"></div>
+        <button id="mostrar-total-iarmay2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmay2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmay2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR JUN 2024 -->
+    <div id="iarjun2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR JUN 2024</h1>
+        <div id="cuestionario-iarjun2024"></div>
+        <button id="mostrar-total-iarjun2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarjun2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarjun2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR AGO 2024 -->
+    <div id="iarago2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR AGO 2024</h1>
+        <div id="cuestionario-iarago2024"></div>
+        <button id="mostrar-total-iarago2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarago2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarago2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR SEP 2024 -->
+    <div id="iarsep2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR SEP 2024</h1>
+        <div id="cuestionario-iarsep2024"></div>
+        <button id="mostrar-total-iarsep2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarsep2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarsep2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR OCT 2024 -->
+    <div id="iaroct2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR OCT 2024</h1>
+        <div id="cuestionario-iaroct2024"></div>
+        <button id="mostrar-total-iaroct2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iaroct2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iaroct2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR NOV 2024 -->
+    <div id="iarnov2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR NOV 2024</h1>
+        <div id="cuestionario-iarnov2024"></div>
+        <button id="mostrar-total-iarnov2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarnov2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarnov2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR DIC 2024 -->
+    <div id="iardic2024" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR DIC 2024</h1>
+        <div id="cuestionario-iardic2024"></div>
+        <button id="mostrar-total-iardic2024">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iardic2024" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iardic2024')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR FEB 2025 -->
+    <div id="iarfeb2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR FEB 2025</h1>
+        <div id="cuestionario-iarfeb2025"></div>
+        <button id="mostrar-total-iarfeb2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarfeb2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarfeb2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAR 2025 -->
+    <div id="iarmar2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAR 2025</h1>
+        <div id="cuestionario-iarmar2025"></div>
+        <button id="mostrar-total-iarmar2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmar2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmar2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR ABR 2025 -->
+    <div id="iarabr2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR ABR 2025</h1>
+        <div id="cuestionario-iarabr2025"></div>
+        <button id="mostrar-total-iarabr2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarabr2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarabr2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR MAY 2025 -->
+    <div id="iarmay2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR MAY 2025</h1>
+        <div id="cuestionario-iarmay2025"></div>
+        <button id="mostrar-total-iarmay2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarmay2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarmay2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR JUN 2025 -->
+    <div id="iarjun2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR JUN 2025</h1>
+        <div id="cuestionario-iarjun2025"></div>
+        <button id="mostrar-total-iarjun2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarjun2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarjun2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR AGO 2025 -->
+    <div id="iarago2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR AGO 2025</h1>
+        <div id="cuestionario-iarago2025"></div>
+        <button id="mostrar-total-iarago2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarago2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarago2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR SEP 2025 -->
+    <div id="iarsep2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR SEP 2025</h1>
+        <div id="cuestionario-iarsep2025"></div>
+        <button id="mostrar-total-iarsep2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarsep2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarsep2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR OCT 2025 -->
+    <div id="iaroct2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR OCT 2025</h1>
+        <div id="cuestionario-iaroct2025"></div>
+        <button id="mostrar-total-iaroct2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iaroct2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iaroct2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR NOV 2025 -->
+    <div id="iarnov2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR NOV 2025</h1>
+        <div id="cuestionario-iarnov2025"></div>
+        <button id="mostrar-total-iarnov2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iarnov2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iarnov2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- IAR DIC 2025 -->
+    <div id="iardic2025" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>EXAMEN IAR DIC 2025</h1>
+        <div id="cuestionario-iardic2025"></div>
+        <button id="mostrar-total-iardic2025">Mostrar Puntuación Total</button>
+        <div id="resultado-total-iardic2025" class="resultado-final"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlSubmenu('iar-submenu')">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+            <button class="btn-reiniciar" onclick="reiniciarExamen('iardic2025')">🔄 Reiniciar Examen</button>
+        </div>
+    </div>
+
+    <!-- ======== SIMULACRO IAR ======== -->
+    <div id="simulacro_iar" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>SIMULACRO EXAMEN IAR</h1>
+        <div id="cuestionario-simulacro_iar"></div>
+        <button id="mostrar-total-simulacro_iar">Mostrar Puntuación Total</button>
+        <div id="resultado-total-simulacro_iar" class="resultado-final"></div>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+    </div>
+
+    <!-- ======== PANEL VER RESPUESTAS CORRECTAS — SUBMENÚ ======== -->
+    <div id="panel-respuestas-correctas" class="menu-principal oculto">
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1>📋 Ver Respuestas Correctas</h1>
+        <p style="text-align:center;color:white;margin-top:-30px;margin-bottom:28px;font-size:1rem;opacity:0.9;">
+            Seleccioná el examen para ver sus respuestas correctas
+        </p>
+        <div class="container">
+            <!-- Columna 1: 2020 y 2021 -->
+            <div class="columna">
+                <h2>2020</h2>
+                <ul>
+                    <li onclick="mostrarRespuestasExamen('iarsep2020')">SEP 2020</li>
+                    <li onclick="mostrarRespuestasExamen('iaroct2020')">OCT 2020</li>
+                    <li onclick="mostrarRespuestasExamen('iarnov2020')">NOV 2020</li>
+                    <li onclick="mostrarRespuestasExamen('iardic2020')">DIC 2020</li>
+                </ul>
+                <h2 style="margin-top:20px;">2021</h2>
+                <ul>
+                    <li onclick="mostrarRespuestasExamen('iarfeb2021')">FEB 2021</li>
+                    <li onclick="mostrarRespuestasExamen('iarmar2021')">MAR 2021</li>
+                    <li onclick="mostrarRespuestasExamen('iarabr2021')">ABR 2021</li>
+                    <li onclick="mostrarRespuestasExamen('iarmay2021')">MAY 2021</li>
+                    <li onclick="mostrarRespuestasExamen('iarjun2021')">JUN 2021</li>
+                    <li onclick="mostrarRespuestasExamen('iarago2021')">AGO 2021</li>
+                    <li onclick="mostrarRespuestasExamen('iarsep2021')">SEP 2021</li>
+                    <li onclick="mostrarRespuestasExamen('iarnov2021')">NOV 2021</li>
+                    <li onclick="mostrarRespuestasExamen('iardic2021')">DIC 2021</li>
+                </ul>
+            </div>
+            <!-- Columna 2: 2022 y 2023 -->
+            <div class="columna">
+                <h2>2022</h2>
+                <ul>
+                    <li onclick="mostrarRespuestasExamen('iarmar2022')">MAR 2022</li>
+                    <li onclick="mostrarRespuestasExamen('iarabr2022')">ABR 2022</li>
+                    <li onclick="mostrarRespuestasExamen('iarjun2022')">JUN 2022</li>
+                    <li onclick="mostrarRespuestasExamen('iarago2022')">AGO 2022</li>
+                    <li onclick="mostrarRespuestasExamen('iaroct2022')">OCT 2022</li>
+                    <li onclick="mostrarRespuestasExamen('iardic2022')">DIC 2022</li>
+                </ul>
+                <h2 style="margin-top:20px;">2023</h2>
+                <ul>
+                    <li onclick="mostrarRespuestasExamen('iarmar2023')">MAR 2023</li>
+                    <li onclick="mostrarRespuestasExamen('iarabr2023')">ABR 2023</li>
+                    <li onclick="mostrarRespuestasExamen('iarmay2023')">MAY 2023</li>
+                    <li onclick="mostrarRespuestasExamen('iarjun2023')">JUN 2023</li>
+                    <li onclick="mostrarRespuestasExamen('iarago2023')">AGO 2023</li>
+                    <li onclick="mostrarRespuestasExamen('iaroct2023')">OCT 2023</li>
+                    <li onclick="mostrarRespuestasExamen('iardic2023')">DIC 2023</li>
+                </ul>
+            </div>
+            <!-- Columna 3: 2024 y 2025 -->
+            <div class="columna">
+                <h2>2024</h2>
+                <ul>
+                    <li onclick="mostrarRespuestasExamen('iarfeb2024')">FEB 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iarmar2024')">MAR 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iarabr2024')">ABR 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iarmay2024')">MAY 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iarjun2024')">JUN 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iarago2024')">AGO 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iarsep2024')">SEP 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iaroct2024')">OCT 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iarnov2024')">NOV 2024</li>
+                    <li onclick="mostrarRespuestasExamen('iardic2024')">DIC 2024</li>
+                </ul>
+                <h2 style="margin-top:20px;">2025</h2>
+                <ul>
+                    <li onclick="mostrarRespuestasExamen('iarfeb2025')">FEB 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iarmar2025')">MAR 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iarabr2025')">ABR 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iarmay2025')">MAY 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iarjun2025')">JUN 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iarago2025')">AGO 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iarsep2025')">SEP 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iaroct2025')">OCT 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iarnov2025')">NOV 2025</li>
+                    <li onclick="mostrarRespuestasExamen('iardic2025')">DIC 2025</li>
+                </ul>
+            </div>
+        </div>
+        <div style="margin-top:10px;">
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        </div>
+    </div>
+
+    <!-- ======== PÁGINA INDIVIDUAL DE RESPUESTAS CORRECTAS ======== -->
+    <div id="pagina-respuestas-examen" class="pagina-cuestionario">
+        <button class="btn-volver" onclick="volverAlSubmenuRespuestas()">← Volver</button>
+        <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        <h1 id="titulo-respuestas-examen">RESPUESTAS CORRECTAS</h1>
+        <div id="contenido-respuestas-examen"></div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;">
+            <button class="btn-volver" onclick="volverAlSubmenuRespuestas()">← Volver</button>
+            <button class="btn-volver" onclick="volverAlMenu()">← Volver al Menú Principal</button>
+        </div>
+    </div>
+
+
+
+    <!-- Script principal de la aplicación -->
+    <script src="script.js"></script>
+
+    <script>
+        // Medidas de seguridad adicionales
+
+        // 1. Prevenir clic derecho
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // 2. Prevenir atajos de teclado peligrosos
+        document.addEventListener('keydown', function(e) {
+            if (e.keyCode === 123 ||
+                (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74)) ||
+                (e.ctrlKey && e.keyCode === 85) ||
+                (e.ctrlKey && e.keyCode === 83) ||
+                (e.ctrlKey && e.keyCode === 80) ||
+                (e.ctrlKey && e.keyCode === 65)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // 3. Detectar herramientas de desarrollo
+        let devtools = {open: false, orientation: null};
+        setInterval(function() {
+            if (window.outerHeight - window.innerHeight > 160 ||
+                window.outerWidth - window.innerWidth > 160) {
+                if (!devtools.open) {
+                    devtools.open = true;
+                    alert('Por favor, cierre las herramientas de desarrollo para continuar.');
+                    window.location.reload();
+                }
+            } else {
+                devtools.open = false;
+            }
+        }, 500);
+
+        // 4. Prevenir drag and drop
+        document.addEventListener('dragstart', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // 5. Detectar intentos de inspección
+        document.addEventListener('selectstart', function(e) {
+            if (!e.target.matches('input, textarea')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // 6. Prevenir impresión
+        window.addEventListener('beforeprint', function(e) {
+            e.preventDefault();
+            alert('La impresión no está permitida en esta aplicación.');
+            return false;
+        });
+
+        console.log('%cADVERTENCIA!', 'color: red; font-size: 50px; font-weight: bold;');
+        console.log('%cEsta función del navegador está destinada a desarrolladores.', 'font-size: 20px;');
+    </script>
+
+
+    <script>
+        // ======================================================
+        // CHECKMARKS DE CUESTIONARIOS IAR
+        // Almacena progreso por usuario en localStorage.
+        // La clave de usuario se genera/carga al primer uso.
+        // ======================================================
+        (function() {
+            var USER_KEY = 'iar_user_id_v1';
+            var COMPLETED_KEY_PREFIX = 'iar_completed_v1_';
+
+            // Obtener o crear ID de usuario (persistente en este dispositivo)
+            function getUserId() {
+                var uid = localStorage.getItem(USER_KEY);
+                if (!uid) {
+                    uid = 'usr_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2,8);
+                    localStorage.setItem(USER_KEY, uid);
+                }
+                return uid;
+            }
+
+            function getCompletedKey() {
+                return COMPLETED_KEY_PREFIX + getUserId();
+            }
+
+            function loadCompleted() {
+                try { return JSON.parse(localStorage.getItem(getCompletedKey()) || '{}'); } catch(e) { return {}; }
+            }
+
+            function saveCompleted(data) {
+                try { localStorage.setItem(getCompletedKey(), JSON.stringify(data)); } catch(e) {}
+            }
+
+            function applyCheckmarks() {
+                var completed = loadCompleted();
+                // Seleccionar todos los <li> de IAR y OTROS IAR submenús con onclick de cuestionario
+                var contenedores = [
+                    document.getElementById('iar-submenu'),
+                    document.getElementById('otros-iar-submenu')
+                ];
+
+                contenedores.forEach(function(cont) {
+                    if (!cont) return;
+                    cont.querySelectorAll('li[onclick]').forEach(function(li) {
+                        var match = li.getAttribute('onclick').match(/mostrarCuestionario\('([^']+)'\)/);
+                        if (!match) return;
+                        var sid = match[1];
+
+                        // Evitar duplicar si ya tiene el check
+                        if (li.querySelector('.iar-check-label')) return;
+
+                        var label = document.createElement('label');
+                        label.className = 'iar-check-label';
+                        label.title = 'Marcar como completado';
+                        // Detener propagación para no abrir el cuestionario
+                        label.onclick = function(e) { e.stopPropagation(); };
+
+                        var input = document.createElement('input');
+                        input.type = 'checkbox';
+                        input.className = 'iar-check-input';
+                        input.checked = !!completed[sid];
+
+                        var icon = document.createElement('span');
+                        icon.className = 'iar-check-icon';
+                        icon.textContent = '☑';
+                        icon.title = input.checked ? 'Completado — clic para desmarcar' : 'Marcar como completado';
+
+                        input.addEventListener('change', function() {
+                            var c = loadCompleted();
+                            if (input.checked) {
+                                c[sid] = true;
+                                li.classList.add('iar-completado');
+                                icon.title = 'Completado — clic para desmarcar';
+                            } else {
+                                delete c[sid];
+                                li.classList.remove('iar-completado');
+                                icon.title = 'Marcar como completado';
+                            }
+                            saveCompleted(c);
+                        });
+
+                        if (input.checked) li.classList.add('iar-completado');
+
+                        label.appendChild(input);
+                        label.appendChild(icon);
+                        li.appendChild(label);
+                    });
+                });
+            }
+
+            // Aplicar al cargar la página
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', applyCheckmarks);
+            } else {
+                applyCheckmarks();
+            }
+
+            // Re-aplicar cuando se muestra el submenú (por si se generó dinámicamente)
+            document.addEventListener('DOMContentLoaded', function() {
+                var origMostrarSubmenu = window.mostrarSubmenu;
+                if (origMostrarSubmenu) {
+                    window.mostrarSubmenu = function(id) {
+                        origMostrarSubmenu.apply(this, arguments);
+                        if (id === 'iar-submenu' || id === 'otros-iar-submenu') {
+                            setTimeout(applyCheckmarks, 50);
+                        }
+                    };
+                }
+            });
+        })();
+    </script>
+<script data-goatcounter="https://examenesiaruba.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+
+    <!-- Sistema de autenticación Firebase -->
+    <script type="module" src="firebase-auth.js"></script>
+
+</body>
+</html>
