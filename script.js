@@ -212,6 +212,15 @@ if (typeof preguntasPorSeccion === 'undefined') {
   }
 
   function showSection(seccionId) {
+    // ── BLOQUEO DEMO ──
+    if (window._demoCheckEnabled && window._demoSeccionesPermitidas) {
+      const esPermitida = window._demoSeccionesPermitidas.includes(seccionId);
+      const esSimulacro = seccionId === 'simulacro_iar' || seccionId === 'simulador';
+      if (!esPermitida || esSimulacro) {
+        if (typeof mostrarModalRestriccionDemo === 'function') mostrarModalRestriccionDemo();
+        return;
+      }
+    }
     currentSection = seccionId;
     document.getElementById("menu-principal")?.classList.add("oculto");
     const _pb = document.getElementById('buscador-preguntas');
@@ -1429,6 +1438,82 @@ if (typeof preguntasPorSeccion === 'undefined') {
   // ======== Exponer showSection globalmente para el buscador ========
   window.showSection = showSection;
 
+  // ======== Navegación carrusel entre cuestionarios IAR ========
+  const IAR_CARRUSEL = [
+    'iarsep2020','iaroct2020','iarnov2020','iardic2020',
+    'iarfeb2021','iarmar2021','iarabr2021','iarmay2021','iarjun2021','iarago2021','iarsep2021','iarnov2021','iardic2021',
+    'iarmar2022','iarabr2022','iarjun2022','iarago2022','iaroct2022','iardic2022',
+    'iarmar2023','iarabr2023','iarmay2023','iarjun2023','iarago2023','iaroct2023','iardic2023',
+    'iarfeb2024','iarmar2024','iarabr2024','iarmay2024','iarjun2024','iarago2024','iarsep2024','iaroct2024','iarnov2024','iardic2024',
+    'iarfeb2025','iarmar2025','iarabr2025','iarmay2025','iarjun2025','iarago2025','iarsep2025','iaroct2025','iarnov2025','iardic2025'
+  ];
+
+  // ── Helper: detectar si hay respuestas marcadas en la sección actual ──
+  function hayRespuestasMarcadas(seccionId) {
+    if (!seccionId) return false;
+    const s = state[seccionId];
+    if (!s || s.totalShown) return false; // ya terminó, no pedir confirmación
+    return s.graded && Object.keys(s.graded).some(k => s.graded[k]);
+  }
+
+  // ── Diálogo de confirmación profesional para salir de un cuestionario en curso ──
+  function confirmarSalidaCuestionario(onConfirmar) {
+    if (!hayRespuestasMarcadas(currentSection)) {
+      onConfirmar();
+      return;
+    }
+    mostrarDialogoNavBar(
+      '⚠️ Tenés respuestas marcadas',
+      'Si salís ahora, tu progreso en este cuestionario se conservará tal como está.\n\n¿Querés continuar de todas formas?',
+      '✅ Sí, salir',
+      '↩️ No, seguir respondiendo',
+      onConfirmar
+    );
+  }
+
+  window.navegarCuestionarioIAR = function(seccionActual, direccion) {
+    var idx = IAR_CARRUSEL.indexOf(seccionActual);
+    if (idx === -1) return;
+    var nuevoIdx = (idx + direccion + IAR_CARRUSEL.length) % IAR_CARRUSEL.length;
+    var destino = IAR_CARRUSEL[nuevoIdx];
+    // Bloqueo demo: si el destino no está permitido, mostrar modal
+    if (window._demoCheckEnabled && window._demoSeccionesPermitidas &&
+        !window._demoSeccionesPermitidas.includes(destino)) {
+      if (window.mostrarModalRestriccionDemo) window.mostrarModalRestriccionDemo();
+      else if (typeof mostrarModalRestriccionDemo === 'function') mostrarModalRestriccionDemo();
+      return;
+    }
+    confirmarSalidaCuestionario(function() {
+      window.mostrarCuestionario(destino);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  };
+
+  // ── Carrusel para Ver Respuestas Correctas ──
+  let _respuestasSeccionActual = '';
+  window.navegarRespuestasIAR = function(seccionActual, direccion) {
+    // Intentar obtener la sección actual de múltiples fuentes
+    var sid = seccionActual
+      || _respuestasSeccionActual
+      || (document.getElementById('contenido-respuestas-examen') && document.getElementById('contenido-respuestas-examen').dataset.seccion)
+      || '';
+    var idx = IAR_CARRUSEL.indexOf(sid);
+    if (idx === -1) {
+      idx = 0;
+    }
+    var nuevoIdx = (idx + direccion + IAR_CARRUSEL.length) % IAR_CARRUSEL.length;
+    var destino = IAR_CARRUSEL[nuevoIdx];
+    // ── BLOQUEO DEMO ──
+    if (window._demoCheckEnabled && window._demoSeccionesPermitidas &&
+        !window._demoSeccionesPermitidas.includes(destino)) {
+      if (window.mostrarModalRestriccionDemo) window.mostrarModalRestriccionDemo();
+      else if (typeof mostrarModalRestriccionDemo === 'function') mostrarModalRestriccionDemo();
+      return;
+    }
+    window.mostrarRespuestasExamen(destino);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // Variable para rastrear el origen de navegación hacia un cuestionario
   let navegacionOrigen = null; // 'buscador' | 'submenu' | null
 
@@ -1464,59 +1549,56 @@ if (typeof preguntasPorSeccion === 'undefined') {
   };
 
   window.volverAlSubmenu = function(submenuId) {
-    // Si el origen fue el buscador, volver al buscador en lugar del submenú
-    const esBuscador = (typeof navegacionOrigen !== 'undefined' && navegacionOrigen === 'buscador') ||
-                       (function(){ try { return sessionStorage.getItem('buscador_origen') === '1'; } catch(e){ return false; }})();
-    if (esBuscador) {
-      window.volverAlBuscador && window.volverAlBuscador();
+    // Siempre va al submenú indicado — el buscador tiene su propio botón flotante
+    // Confirmación si hay respuestas en curso
+    if (hayRespuestasMarcadas(currentSection)) {
+      mostrarDialogoNavBar(
+        '📋 ¿Salir del cuestionario?',
+        'Tenés respuestas marcadas en el cuestionario actual.\n\nTu progreso se conservará si volvés más tarde. ¿Querés salir de todas formas?',
+        '✅ Sí, volver al menú',
+        '↩️ No, seguir respondiendo',
+        function() { _ejecutarVolverAlSubmenu(submenuId); }
+      );
       return;
     }
+    _ejecutarVolverAlSubmenu(submenuId);
+  };
 
+  function _ejecutarVolverAlSubmenu(submenuId) {
     if (currentSection && state[currentSection] && state[currentSection].totalShown) {
-      // Cuestionario completado: limpiar todo
       limpiarSeccion(currentSection, true);
     } else if (currentSection && state[currentSection] && !state[currentSection].totalShown) {
-      // Cuestionario incompleto: revisar si hay respuestas
       const s = state[currentSection];
       const hayRespuestas = s && s.graded && Object.keys(s.graded).some(k => s.graded[k]);
-      // Si hay respuestas: conservar opciones. Si no: aleatorizar opciones.
       limpiarSeccion(currentSection, !hayRespuestas);
-      console.log(hayRespuestas
-        ? '🔒 Volvió al submenú con respuestas → opciones conservadas'
-        : '🎲 Volvió al submenú sin respuestas → opciones aleatorizadas');
     }
 
     const seccionOrigen = currentSection;
     currentSection = null;
-    navegacionOrigen = null;
     document.querySelectorAll(".pagina-cuestionario").forEach(p => p.classList.remove("activa"));
 
-    // Mostrar el submenú sin resetear el scroll
     document.getElementById("menu-principal")?.classList.add("oculto");
     document.querySelectorAll(".menu-principal[id$='-submenu']").forEach(s => s.style.display = "none");
     const submenu = document.getElementById(submenuId);
     if (submenu) submenu.style.display = "block";
     history.pushState({ submenu: submenuId }, submenuId, `#${submenuId}`);
 
-    // Esperar que el submenú esté completamente visible antes de hacer scroll
     setTimeout(() => scrollToSectionItem(seccionOrigen), 50);
   };
 
   window.volverAlMenu = function () {
-    if (currentSection !== null) {
-      history.pushState({ section: null }, 'Menú Principal', '#menu');
-    }
-    // Ocultar todos los submenús
-    document.querySelectorAll(".menu-principal[id$='-submenu']").forEach(s => s.style.display = "none");
-    // Ocultar panel de respuestas correctas
-    const _prc = document.getElementById('panel-respuestas-correctas');
-    if (_prc) _prc.classList.add('oculto');
-    const _pre2 = document.getElementById('pagina-respuestas-examen');
-    if (_pre2) _pre2.classList.remove('activa');
-
-    // Restaurar modo normal de la barra inferior
-    navBarModo = 'normal';
-    showMenu();
+    confirmarSalidaCuestionario(function() {
+      if (currentSection !== null) {
+        history.pushState({ section: null }, 'Menú Principal', '#menu');
+      }
+      document.querySelectorAll(".menu-principal[id$='-submenu']").forEach(s => s.style.display = "none");
+      const _prc = document.getElementById('panel-respuestas-correctas');
+      if (_prc) _prc.classList.add('oculto');
+      const _pre2 = document.getElementById('pagina-respuestas-examen');
+      if (_pre2) _pre2.classList.remove('activa');
+      navBarModo = 'normal';
+      showMenu();
+    });
   };
 
   // ======== VER RESPUESTAS CORRECTAS ========
@@ -1548,6 +1630,8 @@ if (typeof preguntasPorSeccion === 'undefined') {
   ];
 
   window.mostrarRespuestasCorrectas = function() {
+    // ── BLOQUEO DEMO: permite entrar al panel pero cada examen individual queda bloqueado ──
+    // (el bloqueo por examen se hace en mostrarRespuestasExamen)
     // Ocultar todo lo demás
     document.getElementById('menu-principal')?.classList.add('oculto');
     document.querySelectorAll('.menu-principal[id$="-submenu"]').forEach(s => s.style.display = 'none');
@@ -1570,6 +1654,13 @@ if (typeof preguntasPorSeccion === 'undefined') {
   };
 
   window.mostrarRespuestasExamen = function(seccionId) {
+    // ── BLOQUEO DEMO ──
+    if (window._demoCheckEnabled && window._demoSeccionesPermitidas &&
+        !window._demoSeccionesPermitidas.includes(seccionId)) {
+      if (typeof mostrarModalRestriccionDemo === 'function') mostrarModalRestriccionDemo();
+      return;
+    }
+    _respuestasSeccionActual = seccionId; // guardar para carrusel
     // Ocultar submenú de respuestas
     const panel = document.getElementById('panel-respuestas-correctas');
     if (panel) panel.classList.add('oculto');
@@ -1795,18 +1886,13 @@ if (typeof preguntasPorSeccion === 'undefined') {
   function _injectNavBarsIntoPages() {
     const completed = getCompletedSections();
 
-    // Inyectar en todas las paginas-cuestionario
+    // Inyectar en todas las paginas-cuestionario EXCEPTO el simulacro
     document.querySelectorAll('.pagina-cuestionario').forEach(function(page) {
+      if (page.id === 'simulacro_iar') return; // no mostrar barra en simulacro
       _injectOrUpdateNavBar(page, completed);
     });
 
-    // Inyectar también en los submenús IAR (iar-submenu y otros-iar-submenu)
-    ['iar-submenu', 'otros-iar-submenu'].forEach(function(submenuId) {
-      const submenu = document.getElementById(submenuId);
-      if (submenu) _injectOrUpdateNavBar(submenu, completed);
-    });
-
-    // NO inyectar en buscador (requerimiento 3)
+    // NO inyectar en submenús IAR ni en buscador
   }
 
   // Variable que indica el modo actual de la barra inferior
@@ -1888,6 +1974,12 @@ if (typeof preguntasPorSeccion === 'undefined') {
   window.renderNavBar = renderNavBar;
 
   function navegarDesdeNavBar(seccionId) {
+    // ── BLOQUEO DEMO ──
+    if (window._demoCheckEnabled && window._demoSeccionesPermitidas &&
+        !window._demoSeccionesPermitidas.includes(seccionId)) {
+      if (typeof mostrarModalRestriccionDemo === 'function') mostrarModalRestriccionDemo();
+      return;
+    }
     // Si ya estamos en ese cuestionario, no hacer nada
     if (currentSection === seccionId) return;
 
@@ -1904,8 +1996,8 @@ if (typeof preguntasPorSeccion === 'undefined') {
 
     if (hayCuestionarioEnCurso) {
       mostrarDialogoNavBar(
-        '📋 ¿Abandonar el cuestionario en curso?',
-        '¡Espera! Tenés respuestas marcadas en el cuestionario actual que se perderán si navegás ahora.\n\n¿Seguro que querés ir a otro examen?',
+        '📋 ¿Salir del cuestionario actual?',
+        'Estás en medio de un cuestionario con respuestas marcadas.\n\nTu progreso se guardará y podrás retomarlo cuando quieras. ¿Querés ir a otro examen?',
         '✅ Sí, cambiar de examen',
         '↩️ No, seguir aquí',
         function() {
@@ -2784,17 +2876,22 @@ if (typeof preguntasPorSeccion === 'undefined') {
         // Verificar restricción demo usando el flag global
         if (window._demoCheckEnabled && window._demoSeccionesPermitidas &&
             !window._demoSeccionesPermitidas.includes(seccionId)) {
-            var overlay = document.getElementById('demo-restriccion-overlay');
-            if (overlay) { overlay.style.display = 'flex'; }
+            if (typeof window.mostrarModalRestriccionDemo === 'function') {
+              window.mostrarModalRestriccionDemo();
+            } else {
+              var overlay = document.getElementById('demo-restriccion-overlay');
+              if (overlay) overlay.style.display = 'flex';
+            }
             return;
         }
         try { sessionStorage.setItem('buscador_origen', '1'); } catch(e) {}
         // Marcar origen de navegación como buscador
         if (typeof navegacionOrigen !== 'undefined') navegacionOrigen = 'buscador';
 
-        // Guardar posición de scroll ACTUAL en el buscador antes de navegar
+        // Guardar posición de scroll ACTUAL y el card exacto antes de navegar
         try {
             localStorage.setItem('buscador_scroll_pos', String(window.pageYOffset || document.documentElement.scrollTop));
+            localStorage.setItem('buscador_last_card', seccionId + '_' + originalIdx);
         } catch(e) {}
 
         // Marcar esta tarjeta como visitada
@@ -2828,11 +2925,16 @@ if (typeof preguntasPorSeccion === 'undefined') {
 
         // Scroll + resaltado a la pregunta específica
         // Usar 800ms para dar tiempo al cuestionario a renderizarse completamente
+        var queryActual = '';
+        try { queryActual = localStorage.getItem(BUSCADOR_KEY) || ''; } catch(e) {}
+        var inputEl = document.getElementById('buscador-input');
+        if (inputEl && inputEl.value.trim().length >= 2) queryActual = inputEl.value.trim();
         setTimeout(function () {
             var bloque = document.getElementById('pregunta-bloque-' + seccionId + '-' + originalIdx);
             if (bloque) {
                 bloque.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 bloque.classList.add('buscador-highlight');
+                _resaltarTextoBuscado(bloque, queryActual);
                 setTimeout(function () { bloque.classList.remove('buscador-highlight'); }, 2500);
             } else {
                 // Si aún no está disponible, intentar una vez más con más delay
@@ -2841,12 +2943,53 @@ if (typeof preguntasPorSeccion === 'undefined') {
                     if (bloque2) {
                         bloque2.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         bloque2.classList.add('buscador-highlight');
+                        _resaltarTextoBuscado(bloque2, queryActual);
                         setTimeout(function () { bloque2.classList.remove('buscador-highlight'); }, 2500);
                     }
                 }, 600);
             }
         }, 800);
     };
+
+    // ── Resaltar texto buscado en amarillo dentro del bloque ──
+    function _resaltarTextoBuscado(bloque, query) {
+        if (!query || query.length < 2) return;
+        // Limpiar highlights anteriores en toda la sección
+        var pagina = bloque.closest('.pagina-cuestionario');
+        if (pagina) {
+            pagina.querySelectorAll('.buscador-texto-highlight').forEach(function(el) {
+                var parent = el.parentNode;
+                parent.replaceChild(document.createTextNode(el.textContent), el);
+                parent.normalize();
+            });
+        }
+        var queryLower = normalizarTexto(query);
+        // Recorrer todos los nodos de texto dentro del bloque
+        var walker = document.createTreeWalker(bloque, NodeFilter.SHOW_TEXT, null, false);
+        var nodos = [];
+        var node;
+        while ((node = walker.nextNode())) nodos.push(node);
+        nodos.forEach(function(textNode) {
+            var text = textNode.textContent;
+            var textNorm = normalizarTexto(text);
+            var idx = textNorm.indexOf(queryLower);
+            if (idx === -1) return;
+            // Reconstruir el nodo con el tramo resaltado
+            var frag = document.createDocumentFragment();
+            var lastIdx = 0;
+            while (idx !== -1) {
+                frag.appendChild(document.createTextNode(text.substring(lastIdx, idx)));
+                var mark = document.createElement('mark');
+                mark.className = 'buscador-texto-highlight';
+                mark.textContent = text.substring(idx, idx + queryLower.length);
+                frag.appendChild(mark);
+                lastIdx = idx + queryLower.length;
+                idx = textNorm.indexOf(queryLower, lastIdx);
+            }
+            frag.appendChild(document.createTextNode(text.substring(lastIdx)));
+            textNode.parentNode.replaceChild(frag, textNode);
+        });
+    }
 
     // ── Volver al buscador conservando la búsqueda y posición de scroll ──
     window.volverAlBuscador = function () {
@@ -2865,16 +3008,68 @@ if (typeof preguntasPorSeccion === 'undefined') {
         try { q = localStorage.getItem(BUSCADOR_KEY) || ''; } catch(e) {}
         var inp = document.getElementById('buscador-input');
         if (inp) inp.value = q;
-        if (q.length >= 2) realizarBusqueda(q);
 
-        // Restaurar posición de scroll al resultado visitado
+        // Obtener el card al que se fue antes de buscar (puede cambiar después del render)
         var savedScrollBuscador = 0;
-        try { savedScrollBuscador = parseInt(localStorage.getItem('buscador_scroll_pos') || '0', 10); } catch(e) {}
-        requestAnimationFrame(function() {
-            requestAnimationFrame(function() {
+        var lastCard = '';
+        try {
+            savedScrollBuscador = parseInt(localStorage.getItem('buscador_scroll_pos') || '0', 10);
+            lastCard = localStorage.getItem('buscador_last_card') || '';
+        } catch(e) {}
+
+        // Función que intenta hacer scroll al card, con reintentos
+        function _scrollAlCard(cardId, intentos) {
+            var cardEl = cardId ? document.querySelector('[data-buscador-card-id="' + cardId + '"]') : null;
+            if (cardEl) {
+                cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                cardEl.style.transition = 'box-shadow .3s, outline .3s';
+                cardEl.style.outline = '3px solid #0891b2';
+                cardEl.style.boxShadow = '0 0 0 5px rgba(8,145,178,0.18)';
+                setTimeout(function() {
+                    cardEl.style.outline = '';
+                    cardEl.style.boxShadow = '';
+                }, 2200);
+            } else if (intentos > 0) {
+                // Aún no está en el DOM, reintentar
+                setTimeout(function() { _scrollAlCard(cardId, intentos - 1); }, 150);
+            } else {
+                // Fallback: scroll numérico
                 window.scrollTo({ top: savedScrollBuscador, behavior: 'smooth' });
+            }
+        }
+
+        if (q.length >= 2) {
+            // Ejecutar búsqueda; cuando termine el DOM se actualiza y entonces hacemos scroll
+            realizarBusqueda(q);
+            // Usar MutationObserver para detectar cuando se rendericen los cards
+            var resDiv = document.getElementById('buscador-resultados');
+            if (resDiv && lastCard) {
+                var intentosDirect = 0;
+                var observerTimeout = null;
+                var obs = new MutationObserver(function(mutations) {
+                    intentosDirect++;
+                    var cardEl = document.querySelector('[data-buscador-card-id="' + lastCard + '"]');
+                    if (cardEl || intentosDirect > 20) {
+                        obs.disconnect();
+                        if (observerTimeout) clearTimeout(observerTimeout);
+                        _scrollAlCard(lastCard, 0);
+                    }
+                });
+                obs.observe(resDiv, { childList: true, subtree: true });
+                // Seguridad: si en 3s no encontró nada, cancelar observer y hacer scroll numérico
+                observerTimeout = setTimeout(function() {
+                    obs.disconnect();
+                    _scrollAlCard(lastCard, 3);
+                }, 3000);
+            }
+        } else {
+            // Sin query: fallback scroll
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    window.scrollTo({ top: savedScrollBuscador, behavior: 'smooth' });
+                });
             });
-        });
+        }
     };
 
     // ── Buscar y renderizar resultados ──
