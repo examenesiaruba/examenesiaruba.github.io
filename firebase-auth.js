@@ -9,8 +9,10 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, deleteDoc, serverTimestamp, collection, addDoc, Timestamp }
+import { getFirestore, doc, setDoc, getDoc, deleteDoc, serverTimestamp, collection, addDoc, Timestamp, increment, updateDoc }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getDatabase, ref, set, onValue, onDisconnect, push, query as rtQuery, limitToLast, orderByChild, serverTimestamp as rtServerTimestamp, remove }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyB9aDHVHhgMGlhXmsiLfiVZcSzUs3994ws",
@@ -19,12 +21,14 @@ const firebaseConfig = {
   storageBucket: "examenesiaruba-d11fb.firebasestorage.app",
   messagingSenderId: "967562801862",
   appId: "1:967562801862:web:61f618fe7a2ff51dd15dc7",
-  measurementId: "G-CFRNQ9Z3SQ"
+  measurementId: "G-CFRNQ9Z3SQ",
+  databaseURL: "https://examenesiaruba-d11fb-default-rtdb.firebaseio.com"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const rtdb = getDatabase(app);
 
 const ADMIN_EMAIL = "micro2020uba@gmail.com";
 const CONTACTO_EMAIL = "examenesiaruba@gmail.com";
@@ -53,6 +57,45 @@ async function verificarLicencia(userId) {
     const licSnap = await getDoc(licRef);
 
     if (!licSnap.exists()) {
+      // ── RECUPERACIÓN AUTOMÁTICA ──
+      // El usuario existe en Firebase Auth pero no tiene licencia en Firestore.
+      // Esto pasa cuando el setDoc falló al registrarse. Auto-crear licencia demo.
+      try {
+        const user = auth.currentUser;
+        if (user && user.uid === userId) {
+          const ahora = Timestamp.now();
+          // Usar la fecha de creación de la cuenta como base del período demo
+          const creadoEn = user.metadata?.creationTime
+            ? Timestamp.fromDate(new Date(user.metadata.creationTime))
+            : ahora;
+          await setDoc(licRef, {
+            esDemo: true,
+            nombre: user.displayName || user.email?.split('@')[0] || 'Usuario',
+            email: user.email,
+            creadoEn: creadoEn,
+            plan: "demo",
+            recuperadaAutomaticamente: true
+          });
+          console.log('[IAR] Licencia demo recuperada automáticamente para', user.email);
+          // Verificar nuevamente con la licencia recién creada
+          const licSnapNuevo = await getDoc(licRef);
+          if (licSnapNuevo.exists()) {
+            const data = licSnapNuevo.data();
+            const creadoEnDate = data.creadoEn.toDate ? data.creadoEn.toDate() : new Date(data.creadoEn);
+            const expiracion = new Date(creadoEnDate.getTime() + DEMO_DIAS * 24 * 60 * 60 * 1000);
+            const ahora2 = new Date();
+            if (ahora2 > expiracion) {
+              const fechaFormateada = expiracion.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+              return { valida: false, esDemo: true, vencida: true, mensaje: `Tu período de prueba de ${DEMO_DIAS} días venció el ${fechaFormateada}.` };
+            }
+            const msRestantes = expiracion - ahora2;
+            const horasRestantes = Math.ceil(msRestantes / (1000 * 60 * 60));
+            return { valida: true, esDemo: true, expiracion, horasRestantes, msRestantes };
+          }
+        }
+      } catch (recErr) {
+        console.warn('[IAR] No se pudo recuperar licencia automáticamente:', recErr.message);
+      }
       return { valida: false, mensaje: "No tenés una licencia activa.\nContactanos para adquirir acceso." };
     }
 
@@ -180,7 +223,7 @@ function inyectarEstilos() {
       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
       padding:16px;box-sizing:border-box;
     }
-    .demo-restriccion-box { background:#fff;border-radius:16px;padding:36px 30px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center; }
+    .demo-restriccion-box { background:#fff;border-radius:14px;padding:22px 20px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center;max-height:90vh;overflow-y:auto; }
     .demo-restriccion-icon { font-size:2.8rem;margin-bottom:10px; }
     .demo-restriccion-titulo { font-size:1.2rem;font-weight:800;color:#d97706;margin-bottom:10px; }
     .demo-restriccion-msg { font-size:.92rem;color:#475569;line-height:1.6;margin-bottom:16px; }
@@ -341,10 +384,6 @@ function mostrarLogin(mensajeError) {
           <div id="login-loading" class="login-loading"></div>
         </div>
         <div id="form-registro" style="display:none;">
-          <div class="demo-banner">
-            <div class="demo-banner-titulo">🎉 Probá GRATIS por ${DEMO_DIAS} días</div>
-            <div class="demo-banner-desc">Accedé a los cuestionarios de <strong>SEP 2020</strong> y <strong>OCT 2020</strong> sin cargo.</div>
-          </div>
           <div class="login-field">
             <label>Nombre completo</label>
             <input type="text" id="reg-nombre" placeholder="Tu nombre completo" autocomplete="name" />
@@ -360,7 +399,7 @@ function mostrarLogin(mensajeError) {
               <button type="button" id="toggle-reg-password" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:0;color:#94a3b8;font-size:1.1rem;line-height:1;">👁</button>
             </div>
           </div>
-          <button id="reg-btn" class="login-btn" style="background:linear-gradient(135deg,#059669,#047857);">🚀 Crear cuenta demo gratis</button>
+          <button id="reg-btn" class="login-btn" style="background:linear-gradient(135deg,#059669,#047857);">🚀 Crear cuenta DEMO gratis</button>
           <div id="reg-loading" class="login-loading"></div>
         </div>
       </div>
@@ -484,59 +523,142 @@ async function handleRegistro() {
 function aplicarRestriccionesDemo() {
   window._demoCheckEnabled = true;
 
-  // Deshabilitar simulador
+  // ── Deshabilitar visualmente el simulador en el menú ──
   document.querySelectorAll('li').forEach(li => {
     const oc = li.getAttribute('onclick') || '';
-    if (oc.includes('simulador')) {
+    if (oc.includes('simulador') || oc.includes('simulacro')) {
       li.style.opacity = '0.4'; li.style.pointerEvents = 'none';
       li.title = 'Disponible en el acceso completo';
     }
   });
 
-  // Deshabilitar "Ver respuestas correctas"
-  document.querySelectorAll('li, button, a').forEach(el => {
-    const txt = (el.textContent || '').toLowerCase();
-    const oc = (el.getAttribute('onclick') || '').toLowerCase();
-    if (txt.includes('respuestas correctas') || oc.includes('mostrarrespuestascorrectas')) {
-      el.style.opacity = '0.4'; el.style.pointerEvents = 'none';
-      el.title = 'Disponible en el acceso completo';
+  // ── "Ver respuestas correctas": en DEMO se permite entrar al panel,
+  //    pero los exámenes individuales no permitidos están bloqueados (se hace abajo) ──
+  // (No deshabilitar el botón principal en el menú)
+
+  // ── Deshabilitar cuestionarios NO permitidos en el submenú IAR ──
+  // y agregar candado visual a ítems de respuestas correctas no permitidos ──
+  document.querySelectorAll('li').forEach(li => {
+    const oc = li.getAttribute('onclick') || '';
+    const m = oc.match(/mostrarCuestionario\('([^']+)'\)/);
+    if (m && !DEMO_SECCIONES_PERMITIDAS.includes(m[1])) {
+      li.style.opacity = '0.4'; li.style.pointerEvents = 'none';
+      li.title = 'Disponible en el acceso completo';
+    }
+    // Ítems de respuestas correctas no permitidos: mostrar candado y permitir clic para modal
+    const mr = oc.match(/mostrarRespuestasExamen\('([^']+)'\)/);
+    if (mr && !DEMO_SECCIONES_PERMITIDAS.includes(mr[1])) {
+      li.style.opacity = '0.55';
+      li.style.cursor = 'pointer';
+      li.title = 'Disponible en el acceso completo — clic para más info';
+      // Agregar ícono de candado si no tiene
+      if (!li.querySelector('.demo-lock-icon')) {
+        const lock = document.createElement('span');
+        lock.className = 'demo-lock-icon';
+        lock.textContent = ' 🔒';
+        lock.style.fontSize = '.8em';
+        li.appendChild(lock);
+      }
+      // Reemplazar onclick para mostrar modal
+      li.setAttribute('onclick', 'window.mostrarModalRestriccionDemo && window.mostrarModalRestriccionDemo()');
     }
   });
 
-  // Interceptar mostrarRespuestasCorrectas
-  const origResp = window.mostrarRespuestasCorrectas;
-  if (origResp) {
-    window.mostrarRespuestasCorrectas = function() { mostrarModalRestriccionDemo(); };
+  // ── Interceptar mostrarRespuestasCorrectas (lista completa) ──
+  // En DEMO se permite entrar al panel; el bloqueo ocurre al intentar abrir un examen no permitido
+  // (no se intercepta aquí)
+
+  // ── Interceptar mostrarRespuestasExamen (cuestionario individual) ──
+  const origRespExamen = window.mostrarRespuestasExamen;
+  if (origRespExamen) {
+    window.mostrarRespuestasExamen = function(seccionId) {
+      if (!DEMO_SECCIONES_PERMITIDAS.includes(seccionId)) {
+        mostrarModalRestriccionDemo(); return;
+      }
+      origRespExamen(seccionId);
+    };
+  }
+
+  // ── Interceptar simulacro ──
+  const origSim = window.mostrarCuestionario;
+  if (origSim) {
+    window.mostrarCuestionario = function(seccionId) {
+      if (seccionId === 'simulacro_iar' || seccionId === 'simulador') {
+        mostrarModalRestriccionDemo(); return;
+      }
+      if (!DEMO_SECCIONES_PERMITIDAS.includes(seccionId)) {
+        mostrarModalRestriccionDemo(); return;
+      }
+      origSim(seccionId);
+    };
   }
 }
 
+// Helper global para abrir el mail de contacto (accesible desde onclick inline)
+window._abrirCorreoContacto = function() {
+  const url = `mailto:${CONTACTO_EMAIL}?subject=Consulta%20precios%20por%20planes%20disponibles`;
+  // Crear un <a> temporal y hacer clic programático — método más confiable en todos los navegadores
+  const a = document.createElement('a');
+  a.href = url;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { try { document.body.removeChild(a); } catch(e) {} }, 300);
+};
+
 function mostrarModalRestriccionDemo() {
-  if (document.getElementById("demo-restriccion-overlay")) {
-    document.getElementById("demo-restriccion-overlay").style.display = "flex";
+  const existente = document.getElementById("demo-restriccion-overlay");
+  if (existente) {
+    existente.style.display = "flex";
     return;
   }
   const overlay = document.createElement("div");
   overlay.id = "demo-restriccion-overlay";
+  // Todos los botones usan onclick inline para máxima compatibilidad
+  // pointer-events:auto y -webkit-user-select:auto para iOS
   overlay.innerHTML = `
-    <div class="demo-restriccion-box">
-      <div class="demo-restriccion-icon">🔒</div>
-      <div class="demo-restriccion-titulo">Contenido exclusivo del acceso completo</div>
-      <div class="demo-restriccion-msg">
-        En la versión demo solo podés acceder a los cuestionarios de <strong>SEP 2020</strong> y <strong>OCT 2020</strong>.<br><br>
-        Para acceder a todos los exámenes, el simulador y las respuestas correctas, adquirí el acceso completo.
+    <div class="demo-restriccion-box" style="-webkit-user-select:auto;user-select:auto;">
+      <div class="demo-restriccion-icon" style="font-size:2rem;margin-bottom:6px;">🎓</div>
+      <div class="demo-restriccion-titulo" style="font-size:1rem;margin-bottom:6px;">Contenido exclusivo</div>
+      <div class="demo-restriccion-msg" style="font-size:.82rem;margin-bottom:12px;">
+        En la <strong>versión demo</strong> podés explorar libremente los exámenes de
+        <strong>SEP 2020</strong> y <strong>OCT 2020</strong>.<br><br>
+        Activá tu acceso completo para desbloquear todos los exámenes, el simulador y las respuestas. 🚀
       </div>
-      <div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:20px;text-align:left;">
-        <div style="font-size:.8rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:10px;">📦 Planes disponibles</div>
-        <div class="demo-plan-row"><span class="demo-plan-nombre">⚡ 1 semana</span><span class="demo-plan-precio">Consultar</span></div>
-        <div class="demo-plan-row"><span class="demo-plan-nombre">📅 1 mes</span><span class="demo-plan-precio">Consultar</span></div>
+      <div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:10px;padding:12px 14px;margin-bottom:14px;text-align:left;">
+        <div style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">📦 Planes disponibles</div>
+        <div style="display:flex;gap:8px;">
+          <div style="flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px;text-align:center;">
+            <div style="font-size:1.1rem;">⚡</div>
+            <div style="font-weight:700;color:#0d7490;font-size:.82rem;">1 semana</div>
+          </div>
+          <div style="flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px;text-align:center;">
+            <div style="font-size:1.1rem;">📅</div>
+            <div style="font-weight:700;color:#0d7490;font-size:.82rem;">1 mes</div>
+          </div>
+        </div>
       </div>
-      <div style="margin-bottom:12px;font-size:.9rem;color:#475569;">Escribinos y te activamos el acceso:</div>
-      <a class="demo-restriccion-email" href="mailto:${CONTACTO_EMAIL}">${CONTACTO_EMAIL}</a><br>
-      <button class="login-btn" id="demo-restriccion-cerrar" style="max-width:200px;display:inline-block;margin-top:12px;">✕ Cerrar</button>
+      <div style="margin-bottom:10px;font-size:.8rem;color:#475569;">Escribinos y te activamos el acceso:</div>
+      <button
+        onclick="window._abrirCorreoContacto(); return false;"
+        style="display:inline-block;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:8px 16px;font-weight:700;color:#0d7490;font-size:.9rem;margin-bottom:20px;cursor:pointer;pointer-events:auto;-webkit-user-select:auto;word-break:break-all;">
+        ${CONTACTO_EMAIL}
+      </button>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:4px;flex-wrap:wrap;">
+        <button
+          onclick="window._abrirCorreoContacto(); return false;"
+          style="background:linear-gradient(135deg,#0891b2,#0d7490);color:#fff;border:none;border-radius:8px;max-width:180px;width:100%;padding:10px;font-size:.88rem;font-weight:700;cursor:pointer;pointer-events:auto;-webkit-user-select:auto;">
+          ✉️ Contactar
+        </button>
+        <button
+          onclick="document.getElementById('demo-restriccion-overlay').style.display='none'; return false;"
+          style="background:#e2e8f0;color:#475569;border:none;border-radius:8px;max-width:130px;width:100%;padding:10px;font-size:.88rem;font-weight:700;cursor:pointer;pointer-events:auto;-webkit-user-select:auto;">
+          ✕ Cerrar
+        </button>
+      </div>
     </div>
   `;
   document.body.appendChild(overlay);
-  document.getElementById("demo-restriccion-cerrar").addEventListener("click", () => { overlay.style.display = "none"; });
 }
 
 // ======== COUNTDOWN EN BARRA ========
@@ -704,9 +826,14 @@ function mostrarLicenciaVencida(mensaje, esDemo) {
   document.body.appendChild(overlay);
   document.getElementById("lv-btn-renovar").addEventListener("click", () => {
     const asunto = esDemo ? "Quiero+adquirir+acceso+completo+IAR" : "Renovar+licencia+IAR";
-    window.open(`mailto:${CONTACTO_EMAIL}?subject=${asunto}`, "_blank");
+    window.location.href = `mailto:${CONTACTO_EMAIL}?subject=${asunto}`;
   });
-  document.getElementById("lv-btn-cerrar").addEventListener("click", handleLogout);
+  document.getElementById("lv-btn-cerrar").addEventListener("click", async () => {
+    const ov = document.getElementById("licencia-vencida-overlay");
+    if (ov) ov.remove();
+    await handleLogout();
+    mostrarLogin();
+  });
 }
 
 // ======== HANDLE LOGIN ========
@@ -756,32 +883,42 @@ async function handleLogin() {
     if (sessionSnap.exists()) {
       const data = sessionSnap.data();
       if (data.deviceId && data.deviceId !== deviceId) {
-        // Hay sesión activa en otro dispositivo
-        // Verificar cuánto tiempo lleva inactiva
-        const lastAct = data.lastActivity
-          ? (data.lastActivity.toDate ? data.lastActivity.toDate() : new Date(data.lastActivity))
-          : null;
-        const minutosInactiva = lastAct ? (Date.now() - lastAct.getTime()) / 60000 : 999;
+        // Hay sesión activa con otro deviceId
+        const emailSesion = data.email || '';
+        const emailActual = user.email || '';
 
-        if (minutosInactiva >= 2) {
-          // Lleva 2+ minutos inactiva → tomar la sesión automáticamente
-          console.log("Sesión anterior inactiva por 2+ min, tomando sesión...");
+        // Si es el mismo email → el usuario simplemente cerró la pestaña/sesión
+        // y el documento de sesión no se borró correctamente. Tomar sesión inmediatamente.
+        if (emailSesion === emailActual) {
+          console.log('[IAR] Mismo usuario, sesión residual detectada → tomando sesión automáticamente.');
+          // continua y sobreescribe la sesión más abajo
         } else {
-          // Sesión reciente → bloquear y mostrar mensaje con cuenta regresiva
-          await signOut(auth);
-          btn.disabled = false;
-          loading.textContent = "";
-          const segsRestantes = Math.max(0, Math.ceil((2 * 60) - (minutosInactiva * 60)));
-          errDiv.textContent = `⚠️ Hay una sesión activa en otro dispositivo. Se liberará automáticamente en ${segsRestantes} segundos, o cerrá sesión manualmente desde ese dispositivo.`;
-          errDiv.style.display = "block";
+          // Verificar cuánto tiempo lleva inactiva
+          const lastAct = data.lastActivity
+            ? (data.lastActivity.toDate ? data.lastActivity.toDate() : new Date(data.lastActivity))
+            : null;
+          const minutosInactiva = lastAct ? (Date.now() - lastAct.getTime()) / 60000 : 999;
 
-          // Reintentar automáticamente cuando pasen los segundos restantes
-          setTimeout(() => {
-            if (document.getElementById("login-overlay")?.style.display !== "none") {
-              handleLogin();
-            }
-          }, (segsRestantes + 3) * 1000);
-          return;
+          if (minutosInactiva >= 2) {
+            // Lleva 2+ minutos inactiva → tomar la sesión automáticamente
+            console.log("Sesión anterior inactiva por 2+ min, tomando sesión...");
+          } else {
+            // Sesión reciente de otro usuario → bloquear con cuenta regresiva
+            await signOut(auth);
+            btn.disabled = false;
+            loading.textContent = "";
+            const segsRestantes = Math.max(0, Math.ceil((2 * 60) - (minutosInactiva * 60)));
+            errDiv.textContent = `⚠️ Hay una sesión activa en otro dispositivo. Se liberará automáticamente en ${segsRestantes} segundos, o cerrá sesión manualmente desde ese dispositivo.`;
+            errDiv.style.display = "block";
+
+            // Reintentar automáticamente cuando pasen los segundos restantes
+            setTimeout(() => {
+              if (document.getElementById("login-overlay")?.style.display !== "none") {
+                handleLogin();
+              }
+            }, (segsRestantes + 3) * 1000);
+            return;
+          }
         }
       }
     }
@@ -901,6 +1038,10 @@ async function mostrarPanelAdmin() {
         <button class="admin-btn admin-btn-cerrar" id="admin-cerrar">✕ Cerrar</button>
       </div>
       <div class="admin-seccion">
+        <h3>📊 Visitas únicas (usuarios que accedieron al menos 1 vez)</h3>
+        <div id="admin-visitas"><em style="color:#94a3b8;font-size:.85rem;">Cargando...</em></div>
+      </div>
+      <div class="admin-seccion">
         <h3>➕ Crear nuevo usuario</h3>
         <div class="admin-row">
           <div class="admin-field">
@@ -1001,10 +1142,39 @@ async function crearUsuarioAdmin() {
 async function cargarDatosAdmin() {
   const solDiv = document.getElementById("admin-solicitudes");
   const usrDiv = document.getElementById("admin-usuarios");
+  const visDiv = document.getElementById("admin-visitas");
   if (!solDiv || !usrDiv) return;
 
   try {
     const { getDocs, collection: col, query, where } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+
+    // Estadísticas de visitas únicas
+    if (visDiv) {
+      try {
+        const statsSnap = await getDoc(doc(db, "estadisticas", "visitas"));
+        if (statsSnap.exists()) {
+          const s = statsSnap.data();
+          visDiv.innerHTML = `
+            <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:4px;">
+              <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 20px;text-align:center;">
+                <div style="font-size:1.8rem;font-weight:700;color:#0369a1;">${s.total || 0}</div>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">TOTAL</div>
+              </div>
+              <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 20px;text-align:center;">
+                <div style="font-size:1.8rem;font-weight:700;color:#15803d;">${s.totalPago || 0}</div>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">PAGO</div>
+              </div>
+              <div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px 20px;text-align:center;">
+                <div style="font-size:1.8rem;font-weight:700;color:#b45309;">${s.totalDemo || 0}</div>
+                <div style="font-size:.78rem;color:#64748b;margin-top:2px;">DEMO</div>
+              </div>
+            </div>
+            <p style="font-size:.75rem;color:#94a3b8;margin-top:6px;">Cada usuario se cuenta una sola vez, sin importar cuántas veces inicie sesión.</p>`;
+        } else {
+          visDiv.innerHTML = '<em style="color:#94a3b8;font-size:.85rem;">Sin datos aún.</em>';
+        }
+      } catch(e) { visDiv.innerHTML = '<em style="color:#dc2626;">Error al cargar visitas.</em>'; }
+    }
 
     // Solicitudes pendientes
     const solSnap = await getDocs(query(col(db, "solicitudes"), where("estado", "==", "pendiente")));
@@ -1267,6 +1437,8 @@ function limpiarUI() {
   window._demoCheckEnabled = false;
   licenciaActual = null;
   detenerListenersActividad();
+  if (auth.currentUser) detenerPresencia(auth.currentUser.uid);
+  detenerChat();
   ["barra-sesion", "licencia-vencida-overlay", "admin-overlay", "inactividad-modal", "demo-restriccion-overlay"].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.remove();
@@ -1293,6 +1465,30 @@ async function cargarSeccion(seccionId) {
 }
 
 window.cargarSeccionFirestore = cargarSeccion;
+window.mostrarModalRestriccionDemo = mostrarModalRestriccionDemo;
+
+// ======== CONTADOR DE VISITAS ÚNICAS ========
+// Registra en Firestore el primer acceso de cada usuario (una sola vez).
+// El doc "estadisticas/visitas" acumula: totalPago, totalDemo, total.
+async function registrarVisitaUnica(uid, esDemo) {
+  try {
+    const visitaRef = doc(db, "visitas_unicas", uid);
+    const snap = await getDoc(visitaRef);
+    if (snap.exists()) return; // ya fue registrado antes → no contar de nuevo
+
+    // Primer acceso de este usuario: guardar marca y sumar al contador global
+    await setDoc(visitaRef, { registradoEn: serverTimestamp(), esDemo: !!esDemo });
+
+    const statsRef = doc(db, "estadisticas", "visitas");
+    const campo = esDemo ? "totalDemo" : "totalPago";
+    await setDoc(statsRef, {
+      [campo]: increment(1),
+      total: increment(1)
+    }, { merge: true });
+  } catch(err) {
+    console.warn("[IAR] No se pudo registrar visita única:", err.message);
+  }
+}
 
 
 onAuthStateChanged(auth, async (user) => {
@@ -1303,9 +1499,14 @@ onAuthStateChanged(auth, async (user) => {
       licenciaActual = licencia;
 
       if (!licencia.valida) {
+        const emailUsuario = user.email || '';
         await signOut(auth);
         if (licencia.vencida) mostrarLicenciaVencida(licencia.mensaje, licencia.esDemo);
-        else mostrarLogin(licencia.mensaje);
+        else {
+          // Mostrar mensaje con el email del usuario y cómo contactar
+          const msgCompleto = `No tenés una licencia activa para ${emailUsuario}.\n\nEscribinos a ${CONTACTO_EMAIL} con tu email y te activamos el acceso.`;
+          mostrarLogin(msgCompleto);
+        }
         return;
       }
       const sessionRef = doc(db, "sessions", user.uid);
@@ -1317,6 +1518,9 @@ onAuthStateChanged(auth, async (user) => {
         mostrarBarraSesion(user.email, licencia);
         iniciarMonitoreoSesion(user);
         iniciarCountdownLicencia(licencia);
+        registrarVisitaUnica(user.uid, licencia.esDemo);
+        iniciarPresencia(user.uid, user.email);
+        iniciarChat(user.email, licencia.esDemo);
       } else if (snap.exists() && snap.data().deviceId !== deviceId) {
         const data = snap.data();
         const lastAct = data.lastActivity
@@ -1331,6 +1535,9 @@ onAuthStateChanged(auth, async (user) => {
           mostrarBarraSesion(user.email, licencia);
           iniciarMonitoreoSesion(user);
           iniciarCountdownLicencia(licencia);
+          registrarVisitaUnica(user.uid, licencia.esDemo);
+          iniciarPresencia(user.uid, user.email);
+          iniciarChat(user.email, licencia.esDemo);
         } else {
           await signOut(auth);
           mostrarLogin("⚠️ Ya hay una sesión activa en otro dispositivo.");
@@ -1342,6 +1549,9 @@ onAuthStateChanged(auth, async (user) => {
         mostrarBarraSesion(user.email, licencia);
         iniciarMonitoreoSesion(user);
         iniciarCountdownLicencia(licencia);
+        registrarVisitaUnica(user.uid, licencia.esDemo);
+        iniciarPresencia(user.uid, user.email);
+        iniciarChat(user.email, licencia.esDemo);
       }
     } catch (err) {
       console.error("Error al inicializar:", err);
@@ -1353,3 +1563,259 @@ onAuthStateChanged(auth, async (user) => {
     mostrarLogin();
   }
 });
+
+// ======================================================
+// ======== PRESENCIA ONLINE + CHAT EN TIEMPO REAL ========
+// ======================================================
+
+let _presenciaRef = null;
+let _chatEsUsuarioPago = true; // todos pueden usar el chat
+let _chatNombreUsuario = '';
+let _chatUnsubscribe = null;
+
+// ── Iniciar presencia online ──
+function iniciarPresencia(uid, email) {
+  const presRef = ref(rtdb, `presencia/${uid}`);
+  _presenciaRef = presRef;
+  const nombre = email.split('@')[0];
+
+  // Escribir presencia actual
+  set(presRef, { online: true, nombre, uid, ts: Date.now() });
+
+  // Al desconectarse, marcar offline automáticamente
+  onDisconnect(presRef).set({ online: false, nombre, uid, ts: Date.now() });
+
+  // Escuchar contador global y actualizar badge en barra
+  const presenciaAllRef = ref(rtdb, 'presencia');
+  onValue(presenciaAllRef, (snapshot) => {
+    const data = snapshot.val() || {};
+    const online = Object.values(data).filter(u => u.online).length;
+    _actualizarContadorOnline(online);
+  });
+}
+
+function _actualizarContadorOnline(cantidad) {
+  // Actualizar en barra de sesión
+  let badge = document.getElementById('badge-online');
+  if (!badge) {
+    const izq = document.getElementById('barra-sesion-izq');
+    if (!izq) return;
+    badge = document.createElement('span');
+    badge.id = 'badge-online';
+    badge.title = 'Usuarios conectados ahora';
+    izq.appendChild(badge);
+  }
+  badge.textContent = `🟢 ${cantidad} en línea`;
+  badge.className = 'badge-online-count';
+
+  // Actualizar también dentro del chat si está abierto
+  const chatOnlineEl = document.getElementById('chat-online-count');
+  if (chatOnlineEl) chatOnlineEl.textContent = `🟢 ${cantidad} en línea`;
+}
+
+// ── Detener presencia al cerrar sesión ──
+function detenerPresencia(uid) {
+  if (_presenciaRef) {
+    set(_presenciaRef, { online: false, nombre: '', uid, ts: Date.now() });
+    _presenciaRef = null;
+  }
+}
+
+// ──────────────────────────────────────────────────────
+// ── CHAT ──────────────────────────────────────────────
+// ──────────────────────────────────────────────────────
+
+function iniciarChat(email, esDemo) {
+  _chatEsUsuarioPago = true; // pago y demo pueden chatear
+  _chatNombreUsuario = email.split('@')[0];
+  _inyectarBotonChat();
+}
+
+function _inyectarBotonChat() {
+  if (document.getElementById('btn-chat-flotante')) return;
+
+  // Botón flotante
+  const btn = document.createElement('button');
+  btn.id = 'btn-chat-flotante';
+  btn.innerHTML = '💬';
+  btn.title = 'Chat de estudiantes';
+  btn.setAttribute('aria-label', 'Abrir chat');
+  btn.addEventListener('click', () => _toggleChat());
+  document.body.appendChild(btn);
+
+  // Ventana del chat
+  const ventana = document.createElement('div');
+  ventana.id = 'chat-ventana';
+  ventana.innerHTML = `
+    <div id="chat-header">
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <span style="font-weight:700;font-size:.95rem;">💬 Chat IAR</span>
+        <span id="chat-online-count" style="font-size:.72rem;opacity:.85;">🟢 cargando...</span>
+      </div>
+      <button id="chat-cerrar" title="Cerrar chat">✕</button>
+    </div>
+    <div id="chat-mensajes"></div>
+    <div id="chat-input-area">
+      <input id="chat-input" type="text" placeholder="Escribí tu mensaje..." maxlength="300" autocomplete="off" />
+      <button id="chat-enviar">➤</button>
+    </div>
+  `;
+  document.body.appendChild(ventana);
+
+  document.getElementById('chat-cerrar').addEventListener('click', () => _toggleChat(false));
+
+  const input = document.getElementById('chat-input');
+  document.getElementById('chat-enviar').addEventListener('click', _enviarMensaje);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _enviarMensaje(); } });
+
+  // Suscribir a mensajes en tiempo real (últimos 50 ordenados por timestamp)
+  const mensajesRef = rtQuery(ref(rtdb, 'chat/mensajes'), orderByChild('ts'), limitToLast(50));
+  
+  _chatUnsubscribe = onValue(mensajesRef, (snapshot) => {
+    const msgs = [];
+    snapshot.forEach(child => {
+      const val = child.val();
+      if (val && val.texto) msgs.push({ id: child.key, ...val });
+    });
+    _renderMensajes(msgs);
+    const onlineEl = document.getElementById('chat-online-count');
+    if (onlineEl && (onlineEl.textContent.includes('cargando') || onlineEl.textContent.includes('error'))) {
+      onlineEl.textContent = '🟢 conectado';
+    }
+  }, (error) => {
+    console.warn('[IAR Chat] Error en suscripción:', error.code, error.message);
+    const onlineEl = document.getElementById('chat-online-count');
+    if (onlineEl) onlineEl.textContent = '🔴 Error de conexión';
+    const container = document.getElementById('chat-mensajes');
+    if (container) {
+      container.innerHTML = `<div class="chat-vacio" style="color:#dc2626;font-size:.82rem;padding:16px;">
+        ⚠️ No se puede conectar al chat.<br><br>
+        Verificá tu conexión a internet.<br><br>
+        <small>Error: ${error.code || error.message}</small>
+      </div>`;
+    }
+  });
+}
+
+function _toggleChat(forzarEstado) {
+  const ventana = document.getElementById('chat-ventana');
+  const btn = document.getElementById('btn-chat-flotante');
+  if (!ventana) return;
+  const visible = ventana.classList.contains('chat-visible');
+  const abrir = forzarEstado !== undefined ? forzarEstado : !visible;
+  if (abrir) {
+    ventana.classList.add('chat-visible');
+    btn.classList.add('chat-abierto');
+    btn.innerHTML = '✕';
+    // Scroll al final
+    const msgs = document.getElementById('chat-mensajes');
+    if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 100);
+    // Limpiar badge de nuevos mensajes
+    btn.removeAttribute('data-nuevos');
+  } else {
+    ventana.classList.remove('chat-visible');
+    btn.classList.remove('chat-abierto');
+    btn.innerHTML = '💬';
+  }
+}
+
+function _renderMensajes(msgs) {
+  const container = document.getElementById('chat-mensajes');
+  if (!container) return;
+  const estabaAbajo = container.scrollHeight - container.scrollTop - container.clientHeight < 60;
+
+  container.innerHTML = '';
+  if (msgs.length === 0) {
+    container.innerHTML = '<div class="chat-vacio">Todavía no hay mensajes. ¡Sé el primero en escribir!</div>';
+    return;
+  }
+
+  let lastFecha = '';
+  msgs.forEach(msg => {
+    const esPropio = msg.nombre === _chatNombreUsuario;
+    const fecha = msg.ts ? new Date(msg.ts) : null;
+    const fechaStr = fecha ? fecha.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit' }) : '';
+    const horaStr = fecha ? fecha.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' }) : '';
+
+    // Separador de fecha
+    if (fechaStr && fechaStr !== lastFecha) {
+      const sep = document.createElement('div');
+      sep.className = 'chat-fecha-sep';
+      sep.textContent = fechaStr;
+      container.appendChild(sep);
+      lastFecha = fechaStr;
+    }
+
+    const burbuja = document.createElement('div');
+    burbuja.className = 'chat-msg' + (esPropio ? ' chat-msg-propio' : ' chat-msg-otro');
+
+    if (!esPropio) {
+      const nombreEl = document.createElement('span');
+      nombreEl.className = 'chat-nombre';
+      nombreEl.textContent = msg.nombre || 'Anónimo';
+      burbuja.appendChild(nombreEl);
+    }
+
+    const textoEl = document.createElement('span');
+    textoEl.className = 'chat-texto';
+    textoEl.textContent = msg.texto;
+    burbuja.appendChild(textoEl);
+
+    const horaEl = document.createElement('span');
+    horaEl.className = 'chat-hora';
+    horaEl.textContent = horaStr;
+    burbuja.appendChild(horaEl);
+
+    container.appendChild(burbuja);
+  });
+
+  if (estabaAbajo) container.scrollTop = container.scrollHeight;
+
+  // Badge de nuevo mensaje si el chat está cerrado
+  const ventana = document.getElementById('chat-ventana');
+  const btn = document.getElementById('btn-chat-flotante');
+  if (btn && ventana && !ventana.classList.contains('chat-visible')) {
+    btn.setAttribute('data-nuevos', '!');
+  }
+}
+
+async function _enviarMensaje() {
+  const input = document.getElementById('chat-input');
+  const btnEnviar = document.getElementById('chat-enviar');
+  if (!input) return;
+  const texto = input.value.trim();
+  if (!texto) return;
+  input.value = '';
+  if (btnEnviar) btnEnviar.disabled = true;
+  try {
+    await push(ref(rtdb, 'chat/mensajes'), {
+      nombre: _chatNombreUsuario,
+      texto,
+      ts: Date.now()
+    });
+  } catch(err) {
+    console.warn('[IAR Chat] Error al enviar:', err.code, err.message);
+    input.value = texto; // restaurar si falla
+    // Mostrar error visible en el chat
+    const container = document.getElementById('chat-mensajes');
+    if (container) {
+      const errEl = document.createElement('div');
+      errEl.style.cssText = 'color:#dc2626;font-size:.75rem;text-align:center;padding:4px 8px;background:#fee2e2;border-radius:6px;margin:4px 8px;';
+      errEl.textContent = '⚠️ No se pudo enviar. Error: ' + (err.code || err.message);
+      container.appendChild(errEl);
+      container.scrollTop = container.scrollHeight;
+      setTimeout(() => errEl.remove(), 5000);
+    }
+  } finally {
+    if (btnEnviar) btnEnviar.disabled = false;
+    if (input) input.focus();
+  }
+}
+
+function detenerChat() {
+  if (_chatUnsubscribe) { _chatUnsubscribe(); _chatUnsubscribe = null; }
+  const v = document.getElementById('chat-ventana');
+  const b = document.getElementById('btn-chat-flotante');
+  if (v) v.remove();
+  if (b) b.remove();
+}
