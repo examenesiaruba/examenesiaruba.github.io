@@ -649,9 +649,6 @@ function mostrarModalRestriccionDemo() {
         <div style="font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">✉️ Contactar:</div>
         <div style="font-size:.85rem;color:#334155;-webkit-user-select:text;user-select:text;pointer-events:auto;cursor:text;word-break:break-all;font-weight:600;">
           ${CONTACTO_EMAIL}
-        </div>
-        <div style="font-size:.75rem;color:#94a3b8;margin-top:4px;">Seleccioná y copiá el mail si el botón no abre tu correo</div>
-      </div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
         <button
           onclick="document.getElementById('demo-restriccion-overlay').style.display='none'; return false;"
