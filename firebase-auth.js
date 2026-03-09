@@ -638,21 +638,24 @@ function mostrarModalRestriccionDemo() {
           </div>
         </div>
       </div>
-      <div style="margin-bottom:10px;font-size:.8rem;color:#475569;">Escribinos y te activamos el acceso:</div>
-      <button
+      <div style="margin-bottom:8px;font-size:.8rem;color:#475569;">Escribinos y te activamos el acceso:</div>
+      <a
         onclick="window._abrirCorreoContacto(); return false;"
-        style="display:inline-block;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:8px 16px;font-weight:700;color:#0d7490;font-size:.9rem;margin-bottom:20px;cursor:pointer;pointer-events:auto;-webkit-user-select:auto;word-break:break-all;">
+        href="mailto:${CONTACTO_EMAIL}?subject=Consulta%20precios%20por%20planes%20disponibles"
+        style="display:inline-block;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:8px 16px;font-weight:700;color:#0d7490;font-size:.9rem;margin-bottom:12px;cursor:pointer;pointer-events:auto;-webkit-user-select:text;user-select:text;word-break:break-all;text-decoration:none;">
         ${CONTACTO_EMAIL}
-      </button>
-      <div style="display:flex;gap:8px;justify-content:center;margin-top:4px;flex-wrap:wrap;">
-        <button
-          onclick="window._abrirCorreoContacto(); return false;"
-          style="background:linear-gradient(135deg,#0891b2,#0d7490);color:#fff;border:none;border-radius:8px;max-width:180px;width:100%;padding:10px;font-size:.88rem;font-weight:700;cursor:pointer;pointer-events:auto;-webkit-user-select:auto;">
-          ✉️ Contactar
-        </button>
+      </a>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;text-align:left;">
+        <div style="font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">✉️ Contactar:</div>
+        <div style="font-size:.85rem;color:#334155;-webkit-user-select:text;user-select:text;pointer-events:auto;cursor:text;word-break:break-all;font-weight:600;">
+          ${CONTACTO_EMAIL}
+        </div>
+        <div style="font-size:.75rem;color:#94a3b8;margin-top:4px;">Seleccioná y copiá el mail si el botón no abre tu correo</div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
         <button
           onclick="document.getElementById('demo-restriccion-overlay').style.display='none'; return false;"
-          style="background:#e2e8f0;color:#475569;border:none;border-radius:8px;max-width:130px;width:100%;padding:10px;font-size:.88rem;font-weight:700;cursor:pointer;pointer-events:auto;-webkit-user-select:auto;">
+          style="background:#e2e8f0;color:#475569;border:none;border-radius:8px;padding:10px 24px;font-size:.88rem;font-weight:700;cursor:pointer;pointer-events:auto;">
           ✕ Cerrar
         </button>
       </div>
