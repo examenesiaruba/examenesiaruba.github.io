@@ -631,24 +631,25 @@ function mostrarModalRestriccionDemo() {
           <div style="flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px;text-align:center;">
             <div style="font-size:1.1rem;">⚡</div>
             <div style="font-weight:700;color:#0d7490;font-size:.82rem;">1 semana</div>
+            <div style="font-weight:700;color:#059669;font-size:.82rem;margin-top:3px;">$10.000</div>
           </div>
           <div style="flex:1;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;padding:8px;text-align:center;">
             <div style="font-size:1.1rem;">📅</div>
             <div style="font-weight:700;color:#0d7490;font-size:.82rem;">1 mes</div>
+            <div style="font-weight:700;color:#059669;font-size:.82rem;margin-top:3px;">$30.000</div>
           </div>
         </div>
       </div>
-      <div style="margin-bottom:8px;font-size:.8rem;color:#475569;">Escribinos y te activamos el acceso:</div>
-      <a
-        onclick="window._abrirCorreoContacto(); return false;"
-        href="mailto:${CONTACTO_EMAIL}?subject=Consulta%20precios%20por%20planes%20disponibles"
-        style="display:inline-block;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:8px 16px;font-weight:700;color:#0d7490;font-size:.9rem;margin-bottom:12px;cursor:pointer;pointer-events:auto;-webkit-user-select:text;user-select:text;word-break:break-all;text-decoration:none;">
-        ${CONTACTO_EMAIL}
-      </a>
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;text-align:left;">
-        <div style="font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">✉️ Contactar:</div>
-        <div style="font-size:.85rem;color:#334155;-webkit-user-select:text;user-select:text;pointer-events:auto;cursor:text;word-break:break-all;font-weight:600;">
+        <div style="font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">✉️ Contactar:</div>
+        <a
+          onclick="window._abrirCorreoContacto(); return false;"
+          href="mailto:${CONTACTO_EMAIL}?subject=Consulta%20precios%20por%20planes%20disponibles"
+          style="display:block;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:8px 12px;font-weight:700;color:#0d7490;font-size:.9rem;cursor:pointer;pointer-events:auto;-webkit-user-select:text;user-select:text;word-break:break-all;text-decoration:none;">
           ${CONTACTO_EMAIL}
+        </a>
+        <div style="font-size:.72rem;color:#94a3b8;margin-top:5px;"></div>
+      </div>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
         <button
           onclick="document.getElementById('demo-restriccion-overlay').style.display='none'; return false;"
