@@ -752,8 +752,9 @@ function mostrarModalRestriccionDemo() {
       // Verificar si ya existe una solicitud pendiente de este usuario
       const { getDocs: gd3, query: q3, where: w3, collection: col3 } =
         await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-      const solExistQ = await gd3(q3(col3(db, 'solicitudes'), w3('uid', '==', userId), w3('estado', '==', 'pendiente')));
-      if (!solExistQ.empty) {
+      const solExistQ = await gd3(q3(col3(db, 'solicitudes'), w3('uid', '==', userId)));
+      const tienePendiente1 = !solExistQ.empty && solExistQ.docs.some(d => d.data().estado === 'pendiente');
+      if (tienePendiente1) {
         sucDiv.textContent = '✅ Ya tenés una solicitud pendiente. Te contactaremos a la brevedad.';
         sucDiv.style.display = 'block';
         btn.style.display = 'none';
@@ -1031,8 +1032,9 @@ function mostrarLicenciaVencida(mensaje, esDemo, userData) {
       // Verificar si ya existe una solicitud pendiente de este usuario
       const { getDocs: gd2, query: q2, where: w2, collection: col2 } =
         await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-      const solExistQ = await gd2(q2(col2(db, "solicitudes"), w2("uid", "==", userId), w2("estado", "==", "pendiente")));
-      if (!solExistQ.empty) {
+      const solExistQ = await gd2(q2(col2(db, "solicitudes"), w2("uid", "==", userId)));
+      const tienePendiente2 = !solExistQ.empty && solExistQ.docs.some(d => d.data().estado === "pendiente");
+      if (tienePendiente2) {
         sucDiv.textContent = "✅ Ya tenés una solicitud pendiente. Te contactaremos a la brevedad.";
         sucDiv.style.display = "block";
         btn.style.display = "none";
@@ -1686,13 +1688,13 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
       throw new Error("No se encontró la licencia del usuario. Verificá que el UID o email sea correcto.");
     }
 
-    // Eliminar la solicitud de Firestore
-    await deleteDoc(doc(db, "solicitudes", docId));
-
-    // Eliminar la fila del DOM de forma inmediata
+    // Eliminar la fila del DOM ANTES del await (respuesta visual inmediata)
     document.querySelectorAll(".admin-tabla tr").forEach(row => {
       if (row.innerHTML.includes(docId)) row.remove();
     });
+
+    // Eliminar la solicitud de Firestore
+    await deleteDoc(doc(db, "solicitudes", docId));
 
     // Filtrar el doc aprobado del snapshot en memoria para que no reaparezca
     if (_ultimoSnapshotSolicitudes) {
@@ -1726,22 +1728,18 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
 window.rechazarSolicitud = async function(docId) {
   const msgDiv = document.getElementById("admin-msg-acciones");
   try {
-    // 1. Eliminar de Firestore
-    await deleteDoc(doc(db, "solicitudes", docId));
-
-    // 2. Eliminar la fila del DOM de forma inmediata (sin esperar al snapshot)
-    // Buscamos cualquier botón cuyo onclick contenga el docId y eliminamos la fila
+    // 1. Eliminar la fila del DOM ANTES del await (respuesta visual inmediata)
     document.querySelectorAll(".admin-tabla tr").forEach(row => {
       if (row.innerHTML.includes(docId)) row.remove();
     });
 
-    // 3. Si el snapshot del listener aún tiene el doc en cache, forzar re-render
-    // con los datos actualizados (excepto el eliminado)
+    // 2. Eliminar de Firestore
+    await deleteDoc(doc(db, "solicitudes", docId));
+
+    // 3. Forzar re-render filtrando el doc del cache del listener
     if (_ultimoSnapshotSolicitudes) {
-      // Filtrar el doc eliminado del snapshot en memoria (workaround cache)
       const docsActualizados = [];
       _ultimoSnapshotSolicitudes.forEach(d => { if (d.id !== docId) docsActualizados.push(d); });
-      // Recrear objeto fake para renderizar
       const fakeSnap = { size: docsActualizados.length, forEach: (fn) => docsActualizados.forEach(fn) };
       renderizarSolicitudesAdmin(fakeSnap);
     }
@@ -1753,7 +1751,7 @@ window.rechazarSolicitud = async function(docId) {
     }
   } catch(e) {
     console.error("Error eliminando solicitud:", e);
-    if (msgDiv) { msgDiv.textContent = "Error al rechazar: " + (e.message || e); msgDiv.className = "admin-msg err"; }
+    if (msgDiv) { msgDiv.textContent = "❌ Error al rechazar: " + (e.message || e); msgDiv.className = "admin-msg err"; }
   }
 };
 
@@ -1775,18 +1773,28 @@ window.reactivarUsuario = async function(uid) {
     }
     await setDoc(doc(db, "licencias", uid), licData);
 
-    // Eliminar solicitudes pendientes de este usuario (para que no queden en la lista)
+    // Eliminar solicitudes pendientes de este usuario (queries simples sin índice compuesto)
     const { getDocs: gd3, query: q3, where: w3, collection: col3 } =
       await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-    const solQ = await gd3(q3(col3(db, "solicitudes"), w3("uid", "==", uid), w3("estado", "==", "pendiente")));
     const elimPromises = [];
-    solQ.forEach(d => elimPromises.push(deleteDoc(doc(db, "solicitudes", d.id))));
-    // También buscar por email si no encontró por uid
-    if (solQ.empty && emailUsuario) {
-      const solQEmail = await gd3(q3(col3(db, "solicitudes"), w3("email", "==", emailUsuario), w3("estado", "==", "pendiente")));
-      solQEmail.forEach(d => elimPromises.push(deleteDoc(doc(db, "solicitudes", d.id))));
+    try {
+      // Buscar por uid (query simple, sin índice compuesto)
+      const solQ = await gd3(q3(col3(db, "solicitudes"), w3("uid", "==", uid)));
+      solQ.forEach(d => {
+        if (d.data().estado === "pendiente") elimPromises.push(deleteDoc(doc(db, "solicitudes", d.id)));
+      });
+      // Si no encontró por uid, buscar por email
+      if (elimPromises.length === 0 && emailUsuario) {
+        const solQEmail = await gd3(q3(col3(db, "solicitudes"), w3("email", "==", emailUsuario)));
+        solQEmail.forEach(d => {
+          if (d.data().estado === "pendiente") elimPromises.push(deleteDoc(doc(db, "solicitudes", d.id)));
+        });
+      }
+      if (elimPromises.length > 0) await Promise.all(elimPromises);
+    } catch(solErr) {
+      // No bloquear la reactivación si falla la limpieza de solicitudes
+      console.warn("[IAR] No se pudo limpiar solicitudes pendientes:", solErr.message);
     }
-    if (elimPromises.length > 0) await Promise.all(elimPromises);
 
     await cargarDatosAdmin();
   } catch(err) { alert("Error al reactivar: " + (err.message || err)); }
