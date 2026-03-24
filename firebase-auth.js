@@ -7,7 +7,7 @@
 */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged }
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, deleteDoc, serverTimestamp, collection, addDoc, Timestamp, increment, updateDoc, onSnapshot, query, where }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -415,6 +415,24 @@ function mostrarLogin(mensajeError) {
           </div>
           <button id="login-btn" class="login-btn">Ingresar</button>
           <div id="login-loading" class="login-loading"></div>
+          <div style="text-align:center;margin-top:10px;">
+            <button type="button" id="btn-olvide-password" style="background:none;border:none;color:#0d7490;font-size:.82rem;cursor:pointer;text-decoration:underline;padding:0;">
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
+          <!-- Formulario recuperación (oculto por defecto) -->
+          <div id="form-recuperar" style="display:none;margin-top:14px;padding:14px;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;">
+            <div style="font-size:.82rem;font-weight:600;color:#0d7490;margin-bottom:8px;">Ingresá tu email registrado y te enviaremos un enlace para restablecer tu contraseña.</div>
+            <div class="login-field" style="margin-bottom:8px;">
+              <label>Email</label>
+              <input type="email" id="recuperar-email" placeholder="tu@email.com" autocomplete="email" />
+            </div>
+            <div id="recuperar-msg" style="display:none;font-size:.82rem;font-weight:600;padding:7px 10px;border-radius:6px;margin-bottom:8px;"></div>
+            <div style="display:flex;gap:8px;">
+              <button type="button" id="btn-enviar-recuperar" class="login-btn" style="margin-top:0;font-size:.85rem;padding:9px;">Enviar email</button>
+              <button type="button" id="btn-cancelar-recuperar" class="login-btn-sec" style="font-size:.85rem;padding:9px;">Cancelar</button>
+            </div>
+          </div>
         </div>
         <div id="form-registro" style="display:none;">
           <div class="login-field">
@@ -444,6 +462,21 @@ function mostrarLogin(mensajeError) {
     document.getElementById("login-btn").addEventListener("click", handleLogin);
     document.getElementById("login-password").addEventListener("keydown", e => { if (e.key === "Enter") handleLogin(); });
     document.getElementById("login-email").addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("login-password").focus(); });
+
+    // ── Recuperación de contraseña ──
+    document.getElementById("btn-olvide-password").addEventListener("click", () => {
+      const formRecuperar = document.getElementById("form-recuperar");
+      const emailVal = document.getElementById("login-email").value.trim();
+      if (emailVal) document.getElementById("recuperar-email").value = emailVal;
+      formRecuperar.style.display = formRecuperar.style.display === "none" ? "block" : "none";
+      document.getElementById("recuperar-msg").style.display = "none";
+    });
+    document.getElementById("btn-cancelar-recuperar").addEventListener("click", () => {
+      document.getElementById("form-recuperar").style.display = "none";
+      document.getElementById("recuperar-msg").style.display = "none";
+    });
+    document.getElementById("btn-enviar-recuperar").addEventListener("click", handleRecuperarPassword);
+    document.getElementById("recuperar-email").addEventListener("keydown", e => { if (e.key === "Enter") handleRecuperarPassword(); });
     document.getElementById("toggle-password").addEventListener("click", () => {
       const inp = document.getElementById("login-password");
       const btn = document.getElementById("toggle-password");
@@ -1133,6 +1166,42 @@ function mostrarLicenciaVencida(mensaje, esDemo, userData) {
 }
 
 // ======== HANDLE LOGIN ========
+// ======== RECUPERACIÓN DE CONTRASEÑA ========
+async function handleRecuperarPassword() {
+  const email = (document.getElementById("recuperar-email")?.value || "").trim();
+  const msgDiv = document.getElementById("recuperar-msg");
+  const btn = document.getElementById("btn-enviar-recuperar");
+  if (!msgDiv || !btn) return;
+
+  if (!email) {
+    msgDiv.textContent = "Por favor ingresá tu email.";
+    msgDiv.style.cssText = "display:block;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-size:.82rem;font-weight:600;padding:7px 10px;border-radius:6px;margin-bottom:8px;";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Enviando...";
+  msgDiv.style.display = "none";
+
+  try {
+    await sendPasswordResetEmail(auth, email);
+    msgDiv.textContent = "✅ Te enviamos un email con el enlace para restablecer tu contraseña. Revisá también la carpeta de spam.";
+    msgDiv.style.cssText = "display:block;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;font-size:.82rem;font-weight:600;padding:7px 10px;border-radius:6px;margin-bottom:8px;";
+    btn.style.display = "none";
+  } catch(err) {
+    let msg = "Error al enviar el email. Verificá tu conexión.";
+    if (err.code === "auth/user-not-found" || err.code === "auth/invalid-email") {
+      msg = "No encontramos una cuenta con ese email.";
+    } else if (err.code === "auth/too-many-requests") {
+      msg = "Demasiados intentos. Esperá unos minutos.";
+    }
+    msgDiv.textContent = msg;
+    msgDiv.style.cssText = "display:block;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-size:.82rem;font-weight:600;padding:7px 10px;border-radius:6px;margin-bottom:8px;";
+    btn.disabled = false;
+    btn.textContent = "Enviar email";
+  }
+}
+
 async function handleLogin() {
   const email = (document.getElementById("login-email").value || "").trim();
   const password = document.getElementById("login-password").value || "";
@@ -1363,9 +1432,9 @@ function renderizarSolicitudesAdmin(snapshot) {
         <td style="font-family:monospace;font-size:.72rem;" title="${uid}">${uidCorto}</td>
         <td>
           <select id="sol-plan-sel-${d.id}" style="font-size:.75rem;padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;">
-            <option value="1 semana" ${s.plan==="1 semana"?"selected":""}>1 semana</option>
-            <option value="1 mes" ${s.plan==="1 mes"||!s.plan?"selected":""}>1 mes</option>
-            <option value="1 min TEST" ${s.plan==="1 min TEST"?"selected":""} style="color:#d97706;font-style:italic;">⚙️ 1 min (TEST)</option>
+          <option value="1 semana" ${s.plan==="1 semana"||!s.plan?"selected":""}>1 semana</option>
+          <option value="1 mes" ${s.plan==="1 mes"?"selected":""}>1 mes</option>            
+          <option value="1 min TEST" ${s.plan==="1 min TEST"?"selected":""} style="color:#d97706;font-style:italic;">⚙️ 1 min (TEST)</option>
           </select>
         </td>
         <td style="font-size:.8rem;">${fecha}</td>
@@ -1632,8 +1701,8 @@ async function cargarDatosAdmin() {
           <td>${estadoBadge}</td>
           <td style="white-space:nowrap;">
             <select id="sel-plan-${uid}" style="font-size:.72rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;">
-              <option value="1semana">1 semana</option>
-              <option value="1mes" selected>1 mes</option>
+              <option value="1semana" selected>1 semana</option>
+              <option value="1mes">1 mes</option>
               <option value="1min" style="color:#d97706;font-style:italic;">⚙️ 1 min (TEST)</option>
             </select>
             <button class="admin-btn admin-btn-success" style="font-size:.72rem;padding:3px 8px;margin-left:3px;"
