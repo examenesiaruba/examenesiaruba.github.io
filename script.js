@@ -1140,6 +1140,17 @@ if (typeof preguntasPorSeccion === 'undefined') {
 
     // Restaurar estado previo (selecciones y preguntas evaluadas)
     restoreSelectionsAndGrades(seccionId);
+
+    // ── Modo tarjetita (OAV) ────────────────────────────────────────────
+    // Si script_onebyone.js está cargado, activar el modo una-pregunta-por-vez
+    // directamente aquí, sin polling ni race conditions.
+    if (typeof window._oavRenderOAV === 'function' && typeof window._oavState !== 'undefined') {
+      if (!window._oavState[seccionId]) {
+        window._oavState[seccionId] = { currentIdx: 0, total: preguntas.length };
+      }
+      window._oavRenderOAV(seccionId);
+    }
+    // ────────────────────────────────────────────────────────────────────
   }
 
   function persistSelectionsForQuestion(seccionId, qIndex) {
