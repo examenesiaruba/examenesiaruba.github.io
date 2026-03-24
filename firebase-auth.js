@@ -1998,6 +1998,14 @@ window.borrarTodosLosChats = async function() {
 // ======== LOGOUT ========
 async function handleLogout() {
   try {
+    // ── CRÍTICO: detener el listener de sesión ANTES de borrar el doc ──
+    // Si no se hace, el onSnapshot detecta que el doc desapareció y muestra
+    // la pantalla "Sesión finalizada por el administrador" — que es incorrecta
+    // cuando el propio usuario está cerrando sesión voluntariamente.
+    if (monitoreoSnapshot) { monitoreoSnapshot(); monitoreoSnapshot = null; }
+    if (monitoreoInterval) { clearInterval(monitoreoInterval); monitoreoInterval = null; }
+    detenerListenersActividad();
+
     const user = auth.currentUser;
     if (user) await deleteDoc(doc(db, "sessions", user.uid));
     await signOut(auth);
@@ -2036,12 +2044,12 @@ function mostrarPantallaDesplazada(tipo) {
         font-size:2.2rem;margin:0 auto 20px;
       ">🔐</div>
       <h2 style="font-size:1.25rem;font-weight:800;color:#0f172a;margin:0 0 10px;">
-        ${esEliminada ? "Sesión finalizada" : "Sesión iniciada en otro lugar"}
+        ${esEliminada ? "Sesión finalizada" : "Sesión abierta en otro lugar"}
       </h2>
       <p style="font-size:.92rem;color:#475569;line-height:1.65;margin:0 0 28px;">
         ${esEliminada
           ? "Tu sesión fue cerrada por el administrador. Si creés que es un error, iniciá sesión nuevamente o contactá al soporte."
-          : "Se detectó un inicio de sesión con tu cuenta en <strong>otro dispositivo o ventana</strong>. Por seguridad, esta sesión fue cerrada automáticamente para evitar el uso simultáneo."
+          : "Tu cuenta fue abierta en <strong>otra ventana, pestaña o dispositivo</strong>. Para evitar el uso simultáneo, esta sesión fue cerrada automáticamente. Solo puede haber una sesión activa a la vez."
         }
       </p>
       <div style="
@@ -2052,8 +2060,8 @@ function mostrarPantallaDesplazada(tipo) {
         <span style="font-size:1.4rem;flex-shrink:0;">ℹ️</span>
         <p style="font-size:.8rem;color:#64748b;margin:0;line-height:1.5;">
           ${esEliminada
-            ? "Si necesitás acceso, comunicate con el administrador al correo <strong>${CONTACTO_EMAIL}</strong>"
-            : "Si fuiste vos quien inició sesión en el otro lugar, podés ignorar este mensaje. Si no reconocés el acceso, cambiá tu contraseña."
+            ? `Si necesitás acceso, comunicate con el administrador al correo <strong>${CONTACTO_EMAIL}</strong>`
+            : "Si fuiste vos quien abrió la otra sesión, podés cerrar esta ventana. Si no reconocés ese acceso, cambiá tu contraseña."
           }
         </p>
       </div>
