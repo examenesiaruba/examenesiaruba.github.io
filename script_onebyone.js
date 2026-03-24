@@ -18,11 +18,12 @@
     style.textContent = `
       @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
+      /* ── Variables ── */
       .oav-wrapper {
         font-family: 'DM Sans', system-ui, sans-serif;
         max-width: 780px;
         margin: 0 auto;
-        padding: 0 0 48px;
+        padding: 0 0 32px;
         --oav-blue:    #2563eb;
         --oav-blue-dk: #1d4ed8;
         --oav-blue-lt: #eff6ff;
@@ -33,16 +34,17 @@
         --oav-border:  #e2e8f0;
         --oav-text:    #1e293b;
         --oav-muted:   #64748b;
-        --oav-radius:  14px;
-        --oav-shadow:  0 4px 24px rgba(37,99,235,0.08), 0 1px 4px rgba(0,0,0,0.06);
+        --oav-radius:  12px;
+        --oav-shadow:  0 2px 16px rgba(37,99,235,0.07), 0 1px 3px rgba(0,0,0,0.05);
       }
 
+      /* ── Header de progreso — más compacto ── */
       .oav-header {
         display: flex;
         align-items: center;
-        gap: 14px;
-        margin-bottom: 22px;
-        padding: 18px 22px;
+        gap: 10px;
+        margin-bottom: 12px;
+        padding: 10px 14px;
         background: #fff;
         border-radius: var(--oav-radius);
         box-shadow: var(--oav-shadow);
@@ -51,26 +53,26 @@
       .oav-counter {
         flex-shrink: 0;
         display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 1px;
-        min-width: 52px;
+        align-items: baseline;
+        gap: 3px;
+        min-width: 0;
       }
       .oav-counter-num {
-        font-size: 1.65rem;
+        font-size: 1.2rem;
         font-weight: 700;
         color: var(--oav-blue);
         line-height: 1;
         letter-spacing: -0.5px;
       }
       .oav-counter-total {
-        font-size: 0.75rem;
+        font-size: 0.68rem;
         color: var(--oav-muted);
         font-weight: 500;
+        white-space: nowrap;
       }
       .oav-header-divider {
         width: 1px;
-        height: 36px;
+        height: 24px;
         background: var(--oav-border);
         flex-shrink: 0;
       }
@@ -78,41 +80,31 @@
         flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 5px;
+        min-width: 0;
       }
       .oav-stats {
         display: flex;
-        gap: 8px;
+        gap: 5px;
         flex-wrap: wrap;
       }
       .oav-chip {
         display: inline-flex;
         align-items: center;
-        gap: 5px;
-        padding: 3px 10px;
+        gap: 3px;
+        padding: 1px 7px;
         border-radius: 100px;
-        font-size: 0.72rem;
+        font-size: 0.65rem;
         font-weight: 600;
         letter-spacing: 0.01em;
+        line-height: 1.6;
       }
-      .oav-chip-correct {
-        background: var(--oav-green-lt);
-        color: var(--oav-green);
-        border: 1px solid #a7f3d0;
-      }
-      .oav-chip-wrong {
-        background: var(--oav-red-lt);
-        color: var(--oav-red);
-        border: 1px solid #fecaca;
-      }
-      .oav-chip-pending {
-        background: #f1f5f9;
-        color: var(--oav-muted);
-        border: 1px solid #e2e8f0;
-      }
+      .oav-chip-correct  { background: var(--oav-green-lt); color: var(--oav-green); border: 1px solid #a7f3d0; }
+      .oav-chip-wrong    { background: var(--oav-red-lt);   color: var(--oav-red);   border: 1px solid #fecaca; }
+      .oav-chip-pending  { background: #f1f5f9; color: var(--oav-muted); border: 1px solid #e2e8f0; }
       .oav-bar-track {
         width: 100%;
-        height: 8px;
+        height: 5px;
         background: #f1f5f9;
         border-radius: 100px;
         overflow: hidden;
@@ -129,48 +121,50 @@
       .oav-bar-answered { background: linear-gradient(90deg, #2563eb, #60a5fa); }
       .oav-status-icon {
         flex-shrink: 0;
-        width: 36px;
-        height: 36px;
+        width: 28px;
+        height: 28px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.1rem;
+        font-size: 0.85rem;
+        font-weight: 700;
         transition: all 0.3s ease;
       }
-      .oav-status-unanswered { background: #f1f5f9; border: 2px dashed #cbd5e1; }
-      .oav-status-correct    { background: var(--oav-green-lt); border: 2px solid #34d399; }
-      .oav-status-wrong      { background: var(--oav-red-lt);   border: 2px solid #f87171; }
+      .oav-status-unanswered { background: #f1f5f9; border: 2px dashed #cbd5e1; color: #94a3b8; }
+      .oav-status-correct    { background: var(--oav-green-lt); border: 2px solid #34d399; color: var(--oav-green); }
+      .oav-status-wrong      { background: var(--oav-red-lt);   border: 2px solid #f87171; color: var(--oav-red); }
 
+      /* ── Card principal ── */
       .oav-card {
         background: #fff;
         border-radius: var(--oav-radius);
         box-shadow: var(--oav-shadow);
         border: 1px solid var(--oav-border);
         overflow: hidden;
-        animation: oav-slide-in 0.28s cubic-bezier(.4,0,.2,1);
+        animation: oav-slide-in 0.22s cubic-bezier(.4,0,.2,1);
       }
       @keyframes oav-slide-in {
-        from { opacity: 0; transform: translateY(10px); }
+        from { opacity: 0; transform: translateY(8px); }
         to   { opacity: 1; transform: translateY(0); }
       }
-      .oav-card-body { padding: 28px 30px 22px; }
+      .oav-card-body { padding: 18px 20px 14px; }
       .oav-question-label {
-        font-size: 0.78rem;
+        font-size: 0.68rem;
         font-family: 'DM Sans', sans-serif;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.07em;
+        letter-spacing: 0.08em;
         color: var(--oav-blue);
         display: block;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
       }
       .oav-question-text {
         font-family: 'Lora', Georgia, serif;
-        font-size: 1.08rem;
-        line-height: 1.72;
+        font-size: 0.96rem;
+        line-height: 1.58;
         color: var(--oav-text);
-        margin-bottom: 24px;
+        margin-bottom: 14px;
       }
       .oav-question-img {
         display: block;
@@ -178,29 +172,30 @@
         height: auto;
         border-radius: 8px;
         border: 1px solid var(--oav-border);
-        margin: 0 auto 22px;
+        margin: 0 auto 14px;
         cursor: pointer;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
         transition: opacity 0.2s;
       }
       .oav-question-img:hover { opacity: 0.88; }
 
+      /* ── Opciones ── */
       .oav-options {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 6px;
         margin-bottom: 0;
       }
       .oav-option {
         display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        padding: 13px 16px;
-        border-radius: 10px;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 13px;
+        border-radius: 8px;
         border: 1.5px solid var(--oav-border);
         background: #fafafa;
         cursor: pointer;
-        transition: all 0.18s ease;
+        transition: all 0.15s ease;
         position: relative;
         user-select: none;
       }
@@ -225,18 +220,17 @@
 
       .oav-option-letter {
         flex-shrink: 0;
-        width: 26px;
-        height: 26px;
+        width: 22px;
+        height: 22px;
         border-radius: 50%;
-        border: 1.5px solid currentColor;
+        border: 1.5px solid #cbd5e1;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.72rem;
+        font-size: 0.65rem;
         font-weight: 700;
         color: var(--oav-muted);
-        transition: all 0.18s ease;
-        margin-top: 1px;
+        transition: all 0.15s ease;
       }
       .oav-option:hover:not(.oav-option-disabled) .oav-option-letter,
       .oav-option.oav-option-selected .oav-option-letter {
@@ -263,139 +257,140 @@
       }
       .oav-option-text {
         flex: 1;
-        font-size: 0.95rem;
-        line-height: 1.55;
+        font-size: 0.87rem;
+        line-height: 1.45;
         color: var(--oav-text);
       }
       .oav-option-icon {
         flex-shrink: 0;
-        font-size: 1rem;
-        margin-top: 2px;
+        font-size: 0.85rem;
         opacity: 0;
         transition: opacity 0.2s;
+        font-weight: 700;
       }
-      .oav-option.oav-option-correct .oav-option-icon,
-      .oav-option.oav-option-wrong    .oav-option-icon { opacity: 1; }
+      .oav-option.oav-option-correct .oav-option-icon { opacity: 1; color: var(--oav-green); }
+      .oav-option.oav-option-wrong    .oav-option-icon { opacity: 1; color: var(--oav-red); }
 
+      /* ── Badge resultado ── */
       .oav-result-badge {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 6px 14px;
+        gap: 5px;
+        padding: 4px 11px;
         border-radius: 100px;
-        font-size: 0.82rem;
+        font-size: 0.75rem;
         font-weight: 700;
-        margin-top: 16px;
+        margin-top: 10px;
         letter-spacing: 0.02em;
-        animation: oav-pop 0.3s cubic-bezier(.4,0,.2,1);
+        animation: oav-pop 0.25s cubic-bezier(.4,0,.2,1);
       }
       @keyframes oav-pop {
-        from { opacity: 0; transform: scale(0.85); }
+        from { opacity: 0; transform: scale(0.88); }
         to   { opacity: 1; transform: scale(1); }
       }
       .oav-result-correct { background: var(--oav-green-lt); color: var(--oav-green); border: 1.5px solid #a7f3d0; }
       .oav-result-wrong   { background: var(--oav-red-lt);   color: var(--oav-red);   border: 1.5px solid #fecaca; }
 
+      /* ── Footer de la card ── */
       .oav-card-footer {
-        padding: 16px 30px 24px;
+        padding: 11px 20px 16px;
         border-top: 1px solid var(--oav-border);
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 8px;
         background: #fafbfc;
       }
-      .oav-btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+      .oav-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
       .oav-btn {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
-        padding: 10px 22px;
-        border-radius: 8px;
+        gap: 6px;
+        padding: 8px 18px;
+        border-radius: 7px;
         font-family: 'DM Sans', sans-serif;
-        font-size: 0.9rem;
+        font-size: 0.83rem;
         font-weight: 600;
         cursor: pointer;
         border: none;
-        transition: all 0.18s ease;
+        transition: all 0.15s ease;
         letter-spacing: 0.01em;
       }
       .oav-btn:active { transform: scale(0.97); }
       .oav-btn-primary {
         background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
         color: #fff;
-        box-shadow: 0 2px 8px rgba(37,99,235,0.28);
+        box-shadow: 0 2px 6px rgba(37,99,235,0.25);
       }
       .oav-btn-primary:hover:not(:disabled) {
         background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
-        box-shadow: 0 4px 12px rgba(37,99,235,0.38);
+        box-shadow: 0 4px 10px rgba(37,99,235,0.32);
         transform: translateY(-1px);
       }
-      .oav-btn-primary:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-        box-shadow: none;
-        transform: none;
-      }
+      .oav-btn-primary:disabled { opacity: 0.42; cursor: not-allowed; box-shadow: none; transform: none; }
       .oav-btn-ghost {
         background: transparent;
         color: var(--oav-blue);
-        border: 1.5px solid var(--oav-blue);
+        border: 1.5px solid #bfdbfe;
+        font-size: 0.81rem;
       }
-      .oav-btn-ghost:hover:not(:disabled) { background: var(--oav-blue-lt); }
-      .oav-btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+      .oav-btn-ghost:hover:not(:disabled) { background: var(--oav-blue-lt); border-color: var(--oav-blue); }
+      .oav-btn-ghost:disabled { opacity: 0.38; cursor: not-allowed; }
 
+      /* ── Explicación ── */
       .oav-explanation {
-        padding: 14px 18px;
-        border-radius: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
         background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%);
         border-left: 3px solid var(--oav-blue);
-        animation: oav-slide-in 0.3s ease;
+        animation: oav-slide-in 0.25s ease;
       }
       .oav-explanation-title {
-        font-size: 0.78rem;
+        font-size: 0.67rem;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.07em;
+        letter-spacing: 0.08em;
         color: var(--oav-blue);
-        margin-bottom: 7px;
+        margin-bottom: 5px;
       }
       .oav-explanation-text {
-        font-size: 0.93rem;
-        line-height: 1.65;
+        font-size: 0.85rem;
+        line-height: 1.58;
         color: var(--oav-text);
         margin: 0;
       }
       .oav-explanation img {
         display: block;
         max-width: 100%;
-        border-radius: 8px;
-        margin-top: 12px;
+        border-radius: 6px;
+        margin-top: 10px;
         cursor: pointer;
         border: 1px solid var(--oav-border);
       }
 
+      /* ── Navegación ── */
       .oav-nav {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-top: 18px;
+        gap: 10px;
+        margin-top: 10px;
       }
       .oav-nav-btn {
+        flex-shrink: 0;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 11px 24px;
-        border-radius: 10px;
+        gap: 6px;
+        padding: 9px 16px;
+        border-radius: 8px;
         font-family: 'DM Sans', sans-serif;
-        font-size: 0.92rem;
+        font-size: 0.83rem;
         font-weight: 600;
         cursor: pointer;
         border: 1.5px solid var(--oav-border);
         background: #fff;
         color: var(--oav-text);
-        transition: all 0.18s ease;
+        transition: all 0.15s ease;
         box-shadow: var(--oav-shadow);
+        white-space: nowrap;
       }
       .oav-nav-btn:hover:not(:disabled) {
         border-color: var(--oav-blue);
@@ -403,100 +398,115 @@
         background: var(--oav-blue-lt);
         transform: translateY(-1px);
       }
-      .oav-nav-btn:disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-        box-shadow: none;
-        transform: none;
-      }
+      .oav-nav-btn:disabled { opacity: 0.32; cursor: not-allowed; box-shadow: none; transform: none; }
       .oav-nav-btn-next {
         background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
         color: #fff;
         border-color: transparent;
-        box-shadow: 0 2px 8px rgba(37,99,235,0.28);
+        box-shadow: 0 2px 6px rgba(37,99,235,0.25);
       }
       .oav-nav-btn-next:hover:not(:disabled) {
         background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
         color: #fff;
         border-color: transparent;
-        box-shadow: 0 4px 12px rgba(37,99,235,0.38);
+        box-shadow: 0 4px 10px rgba(37,99,235,0.32);
         transform: translateY(-1px);
       }
 
+      /* ── Mini-mapa: barra de segmentos horizontal ── */
       .oav-minimap {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        justify-content: center;
         flex: 1;
-      }
-      .oav-dot {
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        border: 2px solid var(--oav-border);
-        background: #f8fafc;
         display: flex;
         align-items: center;
-        justify-content: center;
-        font-size: 0.65rem;
-        font-weight: 700;
-        color: var(--oav-muted);
+        gap: 2px;
+        overflow: hidden;
+        min-width: 0;
+      }
+      .oav-dot {
+        flex: 1;
+        height: 6px;
+        border-radius: 100px;
+        background: #e2e8f0;
         cursor: pointer;
         transition: all 0.15s ease;
-        flex-shrink: 0;
+        position: relative;
+        min-width: 4px;
       }
-      .oav-dot:hover        { border-color: var(--oav-blue); color: var(--oav-blue); transform: scale(1.12); }
-      .oav-dot-current      { border-color: var(--oav-blue); background: var(--oav-blue); color: #fff; }
-      .oav-dot-correct      { border-color: var(--oav-green); background: var(--oav-green-lt); color: var(--oav-green); }
-      .oav-dot-wrong        { border-color: var(--oav-red);   background: var(--oav-red-lt);   color: var(--oav-red); }
+      .oav-dot:hover         { background: #93c5fd; transform: scaleY(1.5); }
+      .oav-dot-current       { background: var(--oav-blue); transform: scaleY(1.8); border-radius: 4px; }
+      .oav-dot-correct       { background: var(--oav-green); }
+      .oav-dot-wrong         { background: var(--oav-red); }
+      /* tooltip del número al hacer hover */
+      .oav-dot::after {
+        content: attr(data-num);
+        position: absolute;
+        bottom: calc(100% + 5px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e293b;
+        color: #fff;
+        font-size: 0.6rem;
+        font-weight: 700;
+        padding: 2px 5px;
+        border-radius: 4px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s;
+        font-family: 'DM Sans', sans-serif;
+      }
+      .oav-dot:hover::after  { opacity: 1; }
+      .oav-dot-current::after { opacity: 1; background: var(--oav-blue); }
 
+      /* ── Pantalla resultado final ── */
       .oav-result-screen {
         background: #fff;
         border-radius: var(--oav-radius);
         box-shadow: var(--oav-shadow);
         border: 1px solid var(--oav-border);
-        padding: 40px 36px;
+        padding: 28px 24px;
         text-align: center;
-        animation: oav-slide-in 0.35s ease;
+        animation: oav-slide-in 0.3s ease;
       }
-      .oav-result-icon   { font-size: 3.5rem; margin-bottom: 12px; line-height: 1; }
-      .oav-result-score  { font-size: 2.8rem; font-weight: 700; color: var(--oav-blue); letter-spacing: -1px; line-height: 1; margin-bottom: 4px; }
-      .oav-result-label  { font-size: 0.9rem; color: var(--oav-muted); font-weight: 500; margin-bottom: 24px; }
+      .oav-result-icon   { font-size: 2.8rem; margin-bottom: 8px; line-height: 1; }
+      .oav-result-score  { font-size: 2.2rem; font-weight: 700; color: var(--oav-blue); letter-spacing: -1px; line-height: 1; margin-bottom: 3px; }
+      .oav-result-label  { font-size: 0.82rem; color: var(--oav-muted); font-weight: 500; margin-bottom: 18px; }
       .oav-result-bar-wrap {
-        height: 10px;
+        height: 8px;
         background: #f1f5f9;
         border-radius: 100px;
         overflow: hidden;
-        margin-bottom: 24px;
-        max-width: 320px;
+        margin-bottom: 18px;
+        max-width: 280px;
         margin-left: auto;
         margin-right: auto;
       }
       .oav-result-bar-fill { height: 100%; border-radius: 100px; transition: width 1s cubic-bezier(.4,0,.2,1); }
       .oav-result-phrase {
-        font-size: 1rem;
-        line-height: 1.65;
+        font-size: 0.88rem;
+        line-height: 1.6;
         color: var(--oav-text);
         background: var(--oav-blue-lt);
         border-left: 3px solid var(--oav-blue);
         border-radius: 8px;
-        padding: 14px 18px;
+        padding: 11px 14px;
         text-align: left;
-        margin-bottom: 28px;
+        margin-bottom: 20px;
       }
-      .oav-result-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+      .oav-result-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
+      /* ── Responsive mobile ── */
       @media (max-width: 540px) {
-        .oav-card-body { padding: 20px 18px 16px; }
-        .oav-card-footer { padding: 14px 18px 20px; }
-        .oav-question-text { font-size: 0.98rem; }
-        .oav-header { padding: 14px 16px; gap: 10px; }
-        .oav-counter-num { font-size: 1.35rem; }
-        .oav-nav { flex-wrap: wrap; }
-        .oav-nav-btn { flex: 1; min-width: 120px; justify-content: center; }
-        .oav-result-screen { padding: 28px 18px; }
-        .oav-result-score { font-size: 2.2rem; }
+        .oav-card-body    { padding: 14px 14px 11px; }
+        .oav-card-footer  { padding: 9px 14px 13px; }
+        .oav-question-text { font-size: 0.91rem; }
+        .oav-option-text  { font-size: 0.84rem; }
+        .oav-header       { padding: 8px 11px; gap: 8px; }
+        .oav-counter-num  { font-size: 1.05rem; }
+        .oav-nav-btn      { padding: 8px 12px; font-size: 0.79rem; }
+        .oav-result-screen { padding: 20px 14px; }
+        .oav-result-score  { font-size: 1.8rem; }
+        .oav-dot           { height: 5px; }
       }
     `;
     document.head.appendChild(style);
@@ -706,14 +716,14 @@
         ${expContent}`;
     }
 
-    /* ── Mini-mapa ── */
-    let minimapHTML = '<div class="oav-minimap">';
+    /* ── Mini-mapa: barra de segmentos horizontal ── */
+    let minimapHTML = '<div class="oav-minimap" title="Navegá entre preguntas">';
     for (let i = 0; i < total; i++) {
       const st2 = getQuestionStatus(seccionId, i);
       const dotClass = i === idx         ? 'oav-dot-current' :
                        st2 === 'correct' ? 'oav-dot-correct' :
                        st2 === 'wrong'   ? 'oav-dot-wrong'   : '';
-      minimapHTML += `<div class="oav-dot ${dotClass}" title="Pregunta ${i+1}" onclick="window._oavGoTo('${seccionId}',${i})">${i+1}</div>`;
+      minimapHTML += `<div class="oav-dot ${dotClass}" data-num="${i+1}" onclick="window._oavGoTo('${seccionId}',${i})"></div>`;
     }
     minimapHTML += '</div>';
 
