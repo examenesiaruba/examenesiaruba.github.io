@@ -750,15 +750,22 @@ function mostrarModalRestriccionDemo() {
       const userId = user ? user.uid : '';
 
       // Verificar si ya existe una solicitud pendiente de este usuario
-      const { getDocs: gd3, query: q3, where: w3, collection: col3 } =
-        await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-      const solExistQ = await gd3(q3(col3(db, 'solicitudes'), w3('uid', '==', userId)));
-      const tienePendiente1 = !solExistQ.empty && solExistQ.docs.some(d => d.data().estado === 'pendiente');
-      if (tienePendiente1) {
-        sucDiv.textContent = '✅ Ya tenés una solicitud pendiente. Te contactaremos a la brevedad.';
-        sucDiv.style.display = 'block';
-        btn.style.display = 'none';
-        return;
+      // (envuelto en try/catch propio porque las reglas de Firestore pueden no
+      // permitir lectura de 'solicitudes' a usuarios normales)
+      try {
+        const { getDocs: gd3, query: q3, where: w3, collection: col3 } =
+          await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        const solExistQ = await gd3(q3(col3(db, 'solicitudes'), w3('uid', '==', userId)));
+        const tienePendiente1 = !solExistQ.empty && solExistQ.docs.some(d => d.data().estado === 'pendiente');
+        if (tienePendiente1) {
+          sucDiv.textContent = '✅ Ya tenés una solicitud pendiente. Te contactaremos a la brevedad.';
+          sucDiv.style.display = 'block';
+          btn.style.display = 'none';
+          return;
+        }
+      } catch(queryErr) {
+        // Si no se puede leer (por reglas de Firestore), igual intentamos escribir
+        console.warn('[IAR] No se pudo verificar solicitudes existentes:', queryErr.code || queryErr.message);
       }
 
       btn.textContent = 'Enviando...';
@@ -775,7 +782,8 @@ function mostrarModalRestriccionDemo() {
       sucDiv.style.display = 'block';
       btn.style.display = 'none';
     } catch(e) {
-      errDiv.textContent = 'Error al enviar. Verificá tu conexión.';
+      console.error('[IAR] Error al enviar solicitud demo:', e.code, e.message);
+      errDiv.textContent = 'Error al enviar. ' + (e.code === 'permission-denied' ? 'Sin permisos. Verificá que tenés sesión activa.' : 'Verificá tu conexión. (' + (e.code || e.message) + ')');
       errDiv.style.display = 'block';
       btn.disabled = false; btn.textContent = '📩 Solicitar un plan';
     }
@@ -903,10 +911,13 @@ async function enviarSolicitud() {
   loading.textContent = "Enviando solicitud...";
 
   try {
+    const currentUserLocal = auth.currentUser;
     await addDoc(collection(db, "solicitudes"), {
       nombre,
       email,
+      uid: currentUserLocal ? currentUserLocal.uid : "",
       plan,
+      tipo: "nuevo",
       estado: "pendiente",
       fecha: serverTimestamp()
     });
@@ -1030,15 +1041,22 @@ function mostrarLicenciaVencida(mensaje, esDemo, userData) {
       const userId = currentUser ? currentUser.uid : "";
 
       // Verificar si ya existe una solicitud pendiente de este usuario
-      const { getDocs: gd2, query: q2, where: w2, collection: col2 } =
-        await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-      const solExistQ = await gd2(q2(col2(db, "solicitudes"), w2("uid", "==", userId)));
-      const tienePendiente2 = !solExistQ.empty && solExistQ.docs.some(d => d.data().estado === "pendiente");
-      if (tienePendiente2) {
-        sucDiv.textContent = "✅ Ya tenés una solicitud pendiente. Te contactaremos a la brevedad.";
-        sucDiv.style.display = "block";
-        btn.style.display = "none";
-        return;
+      // (envuelto en try/catch propio porque las reglas de Firestore pueden no
+      // permitir lectura de 'solicitudes' a usuarios normales)
+      try {
+        const { getDocs: gd2, query: q2, where: w2, collection: col2 } =
+          await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        const solExistQ = await gd2(q2(col2(db, "solicitudes"), w2("uid", "==", userId)));
+        const tienePendiente2 = !solExistQ.empty && solExistQ.docs.some(d => d.data().estado === "pendiente");
+        if (tienePendiente2) {
+          sucDiv.textContent = "✅ Ya tenés una solicitud pendiente. Te contactaremos a la brevedad.";
+          sucDiv.style.display = "block";
+          btn.style.display = "none";
+          return;
+        }
+      } catch(queryErr) {
+        // Si no se puede leer (por reglas de Firestore), igual intentamos escribir
+        console.warn('[IAR] No se pudo verificar solicitudes existentes:', queryErr.code || queryErr.message);
       }
 
       btn.textContent = "Enviando...";
@@ -1055,7 +1073,8 @@ function mostrarLicenciaVencida(mensaje, esDemo, userData) {
       sucDiv.style.display = "block";
       btn.style.display = "none";
     } catch(e) {
-      errDiv.textContent = "Error al enviar la solicitud. Verificá tu conexión.";
+      console.error('[IAR] Error al enviar solicitud renovación:', e.code, e.message);
+      errDiv.textContent = "Error al enviar la solicitud. " + (e.code === 'permission-denied' ? 'Sin permisos de escritura. Verificá que tenés sesión activa.' : 'Verificá tu conexión. (' + (e.code || e.message) + ')');
       errDiv.style.display = "block";
       btn.disabled = false; btn.textContent = "🔄 Renovar Plan";
     }
@@ -1351,7 +1370,7 @@ function renderizarSolicitudesAdmin(snapshot) {
         <td style="font-size:.8rem;">${fecha}</td>
         <td style="white-space:nowrap;">
           <button class="admin-btn admin-btn-success" style="font-size:.75rem;padding:5px 10px;"
-            onclick="window.aprobarSolicitud('${d.id}','${s.email}','${uid}',document.getElementById('sol-plan-sel-${d.id}').value)">✅ Aprobar</button>
+            onclick="window.aprobarSolicitud('${d.id}','${s.email}','${uid}')">✅ Aprobar</button>
           <button class="admin-btn-rechazar"
             onclick="window.rechazarSolicitud('${d.id}')">✕ Rechazar</button>
         </td>
@@ -1634,22 +1653,26 @@ async function cargarDatosAdmin() {
   }
 }
 // ── Aprobar solicitud ─────────────────────────────────────────────────────
-// Fix 4 & 5: el vencimiento se calcula desde el momento exacto de aprobación.
+// El vencimiento se calcula desde el momento exacto de aprobación.
 // Si el usuario ya existe en "licencias" (renovación), se actualiza su plan.
-// Si es nuevo, se crea su entrada. La solicitud se elimina de Firestore (no
-// solo se marca "aprobada") para que desaparezca de la lista inmediatamente.
+// Si es nuevo, se crea su entrada. La solicitud se elimina de Firestore para
+// que desaparezca de la lista inmediatamente. El cache local del snapshot
+// también se actualiza para evitar re-aparición por race condition.
 window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) {
+  // Leer el valor del select en el momento del click (puede venir como string o como value)
+  const selEl = document.getElementById('sol-plan-sel-' + docId);
+  const planLabelFinal = selEl ? selEl.value : (planLabel || "1 mes");
+
   const planMap = { "1 mes":"1mes","1 semana":"1semana","1 min TEST":"1min" };
-  const planKey = planMap[planLabel] || "1mes";
+  const planKey = planMap[planLabelFinal] || "1mes";
   const planNombres = { "1semana":"1 semana","1mes":"1 mes","1min":"1 min (TEST)" };
 
-  // Fix 5: vencimiento desde el momento exacto de aprobación (justo ahora)
   const venc = calcularVencimiento(planKey);
   const ahora = new Date();
 
   const licData = {
     porVida: false,
-    esDemo: false,           // quitar flag demo si lo tenía
+    esDemo: false,
     plan: planNombres[planKey],
     email,
     vencimiento: venc,
@@ -1661,19 +1684,18 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
     const { getDocs, collection: col2, query: q2, where: w2 } =
       await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
 
-    // Fix 4: Escribir/actualizar la licencia en Firebase
+    // Escribir/actualizar la licencia en Firebase
     let licSet = false;
 
-    // Intentar por UID directo (más confiable)
+    // 1) Si tiene UID, intentar directo
     if (uidSolicitud && uidSolicitud !== '-') {
       try {
-        // setDoc con merge:false sobreescribe completamente → quita esDemo, actualiza vencimiento
-        await setDoc(doc(db, "licencias", uidSolicitud), licData);
+        await setDoc(doc(db, "licencias", uidSolicitud), licData, { merge: false });
         licSet = true;
       } catch(e) { console.warn("No se pudo setDoc por UID directo:", e); }
     }
 
-    // Fallback: buscar por email si no tenemos UID
+    // 2) Si no se pudo por UID, buscar por email en licencias existentes
     if (!licSet) {
       const licQ = await getDocs(q2(col2(db, "licencias"), w2("email", "==", email)));
       if (!licQ.empty) {
@@ -1684,38 +1706,74 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
       }
     }
 
+    // 3) Si el usuario es completamente nuevo (sin licencia previa), crear con UID de la solicitud
+    //    o con un ID generado a partir del email
     if (!licSet) {
-      throw new Error("No se encontró la licencia del usuario. Verificá que el UID o email sea correcto.");
+      const nuevoId = (uidSolicitud && uidSolicitud !== '-')
+        ? uidSolicitud
+        : email.replace(/[^a-zA-Z0-9]/g, '_') + '_' + Date.now().toString(36);
+      await setDoc(doc(db, "licencias", nuevoId), licData);
+      licSet = true;
     }
 
-    // Eliminar la fila del DOM ANTES del await (respuesta visual inmediata)
+    // 1. Respuesta visual inmediata: ocultar la fila del DOM
     document.querySelectorAll(".admin-tabla tr").forEach(row => {
-      if (row.innerHTML.includes(docId)) row.remove();
+      if (row.innerHTML.includes(docId)) row.style.display = "none";
     });
 
-    // Eliminar la solicitud de Firestore
-    await deleteDoc(doc(db, "solicitudes", docId));
-
-    // Filtrar el doc aprobado del snapshot en memoria para que no reaparezca
+    // 2. Actualizar cache local ANTES de los writes para evitar re-aparición por race condition
     if (_ultimoSnapshotSolicitudes) {
       const docsActualizados = [];
       _ultimoSnapshotSolicitudes.forEach(d => { if (d.id !== docId) docsActualizados.push(d); });
       const fakeSnap = { size: docsActualizados.length, forEach: (fn) => docsActualizados.forEach(fn) };
+      _ultimoSnapshotSolicitudes = fakeSnap;
       renderizarSolicitudesAdmin(fakeSnap);
     }
 
+    // 3. Marcar como 'aprobada' primero (el listener filtra estado=='pendiente'
+    //    y el doc sale del snapshot automáticamente)
+    await updateDoc(doc(db, "solicitudes", docId), { estado: "aprobada" });
+
+    // 4. Eliminar físicamente la solicitud aprobada
+    await deleteDoc(doc(db, "solicitudes", docId));
+
+    // 5. Eliminar también cualquier otra solicitud pendiente del mismo usuario
+    //    (por UID y por email) para no dejar duplicados
+    try {
+      const { getDocs: gd4, query: q4, where: w4, collection: col4 } =
+        await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+      const extraPromises = [];
+      if (uidSolicitud && uidSolicitud !== '-') {
+        const qUid = await gd4(q4(col4(db, "solicitudes"), w4("uid", "==", uidSolicitud)));
+        qUid.forEach(d => { if (d.id !== docId) extraPromises.push(deleteDoc(doc(db, "solicitudes", d.id))); });
+      }
+      if (email) {
+        const qEmail = await gd4(q4(col4(db, "solicitudes"), w4("email", "==", email)));
+        qEmail.forEach(d => { if (d.id !== docId) extraPromises.push(deleteDoc(doc(db, "solicitudes", d.id))); });
+      }
+      if (extraPromises.length > 0) await Promise.all(extraPromises);
+    } catch(cleanErr) {
+      console.warn("[IAR] No se pudieron limpiar solicitudes extra:", cleanErr.message);
+    }
+
     if (msgDiv) {
+      msgDiv.style.display = "block";
       const vencStr = planKey === "1min" ? "en 1 minuto (TEST)" : (venc ? "el " + venc.toLocaleDateString("es-AR") : "ahora");
       msgDiv.textContent = `✅ Licencia activada para ${email} (${planNombres[planKey]}) — vence ${vencStr}`;
       msgDiv.className = "admin-msg ok";
       setTimeout(() => { if (msgDiv) { msgDiv.style.display = "none"; msgDiv.className = "admin-msg"; } }, 5000);
     }
 
-    // Recargar la tabla de usuarios con licencia (las solicitudes ya se actualizan arriba)
+    // Recargar solo la tabla de usuarios con licencia (las solicitudes ya se actualizaron en tiempo real)
     await cargarDatosAdmin();
   } catch(e) {
     console.error("Error aprobando solicitud:", e);
+    // Restaurar visibilidad si falló
+    document.querySelectorAll(".admin-tabla tr").forEach(row => {
+      if (row.innerHTML.includes(docId)) row.style.display = "";
+    });
     if (msgDiv) {
+      msgDiv.style.display = "block";
       msgDiv.textContent = "❌ Error al aprobar: " + (e.message || e);
       msgDiv.className = "admin-msg err";
     }
@@ -1723,35 +1781,50 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
 };
 
 // ── Rechazar solicitud ────────────────────────────────────────────────────
-// Fix 3: eliminar la solicitud de Firestore → desaparece de la lista
-// y el usuario puede volver a solicitar desde cero.
+// Primero actualiza estado='rechazado' (el listener filtra por estado=='pendiente'
+// y el doc desaparece del snapshot), luego elimina físicamente el doc.
+// El usuario podrá volver a solicitar porque no quedará doc pendiente a su nombre.
 window.rechazarSolicitud = async function(docId) {
   const msgDiv = document.getElementById("admin-msg-acciones");
   try {
-    // 1. Eliminar la fila del DOM ANTES del await (respuesta visual inmediata)
+    // 1. Respuesta visual inmediata: ocultar la fila del DOM
     document.querySelectorAll(".admin-tabla tr").forEach(row => {
-      if (row.innerHTML.includes(docId)) row.remove();
+      if (row.innerHTML.includes(docId)) row.style.display = "none";
     });
 
-    // 2. Eliminar de Firestore
-    await deleteDoc(doc(db, "solicitudes", docId));
-
-    // 3. Forzar re-render filtrando el doc del cache del listener
+    // 2. Actualizar cache local ANTES de los writes para evitar re-aparición por race condition
     if (_ultimoSnapshotSolicitudes) {
       const docsActualizados = [];
       _ultimoSnapshotSolicitudes.forEach(d => { if (d.id !== docId) docsActualizados.push(d); });
       const fakeSnap = { size: docsActualizados.length, forEach: (fn) => docsActualizados.forEach(fn) };
+      _ultimoSnapshotSolicitudes = fakeSnap;
       renderizarSolicitudesAdmin(fakeSnap);
     }
 
+    // 3. Actualizar estado a 'rechazado' → el onSnapshot (estado=='pendiente')
+    //    eliminará el doc del snapshot y re-renderizará automáticamente sin él.
+    await updateDoc(doc(db, "solicitudes", docId), { estado: "rechazado" });
+
+    // 4. Eliminar físicamente el doc (el usuario puede volver a solicitar)
+    await deleteDoc(doc(db, "solicitudes", docId));
+
     if (msgDiv) {
-      msgDiv.textContent = "Solicitud rechazada y eliminada.";
+      msgDiv.style.display = "block";
+      msgDiv.textContent = "Solicitud rechazada. El usuario podrá solicitar nuevamente.";
       msgDiv.className = "admin-msg err";
       setTimeout(() => { if (msgDiv) { msgDiv.style.display = "none"; msgDiv.className = "admin-msg"; } }, 3000);
     }
   } catch(e) {
-    console.error("Error eliminando solicitud:", e);
-    if (msgDiv) { msgDiv.textContent = "❌ Error al rechazar: " + (e.message || e); msgDiv.className = "admin-msg err"; }
+    console.error("Error rechazando solicitud:", e);
+    // Restaurar visibilidad si falló
+    document.querySelectorAll(".admin-tabla tr").forEach(row => {
+      if (row.innerHTML.includes(docId)) row.style.display = "";
+    });
+    if (msgDiv) {
+      msgDiv.style.display = "block";
+      msgDiv.textContent = "❌ Error al rechazar: " + (e.message || e);
+      msgDiv.className = "admin-msg err";
+    }
   }
 };
 
