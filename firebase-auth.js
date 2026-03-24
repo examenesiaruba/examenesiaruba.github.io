@@ -517,12 +517,35 @@ async function handleRegistro() {
     const user = cred.user;
     const ahora = Timestamp.now();
 
-    await setDoc(doc(db, "licencias", user.uid), {
-      esDemo: true, nombre, email, creadoEn: ahora, plan: "demo"
-    });
-    await addDoc(collection(db, "registros_demo"), {
-      uid: user.uid, nombre, email, creadoEn: ahora, estado: "activo"
-    });
+    // Intentar escribir la licencia hasta 3 veces antes de rendirse
+    let licEscrita = false;
+    for (let intento = 1; intento <= 3; intento++) {
+      try {
+        await setDoc(doc(db, "licencias", user.uid), {
+          esDemo: true, nombre, email, creadoEn: ahora, plan: "demo"
+        });
+        licEscrita = true;
+        break;
+      } catch (writeErr) {
+        console.warn(`[IAR] Intento ${intento} de escribir licencia falló:`, writeErr.code || writeErr.message);
+        if (intento < 3) await new Promise(r => setTimeout(r, 800));
+      }
+    }
+
+    if (!licEscrita) {
+      // La cuenta en Auth fue creada pero no se pudo guardar la licencia.
+      // Igual dejamos al usuario entrar — verificarLicencia tiene recuperación automática.
+      console.warn('[IAR] No se pudo escribir licencia tras 3 intentos. Se usará recuperación automática.');
+    }
+
+    // registros_demo es opcional, no bloquear si falla
+    try {
+      await addDoc(collection(db, "registros_demo"), {
+        uid: user.uid, nombre, email, creadoEn: ahora, estado: "activo"
+      });
+    } catch(e) {
+      console.warn('[IAR] No se pudo guardar registro_demo:', e.code || e.message);
+    }
 
     loading.textContent = "Verificando...";
     const licencia = await verificarLicencia(user.uid);
@@ -641,6 +664,27 @@ function mostrarModalRestriccionDemo() {
   const existente = document.getElementById("demo-restriccion-overlay");
   if (existente) {
     existente.style.display = "flex";
+    // Restaurar el botón y los mensajes por si el usuario tiene una solicitud
+    // rechazada y quiere volver a enviar
+    const btnExistente = document.getElementById('demo-btn-solicitar-plan');
+    const sucExistente = document.getElementById('demo-sol-exito');
+    const errExistente = document.getElementById('demo-sol-error');
+    if (btnExistente) { btnExistente.style.display = ''; btnExistente.disabled = false; btnExistente.textContent = '📩 Solicitar un plan'; }
+    if (sucExistente) sucExistente.style.display = 'none';
+    if (errExistente) errExistente.style.display = 'none';
+    // Re-verificar si tiene pendiente real para decidir si ocultar el botón
+    const user = auth.currentUser;
+    if (user && btnExistente) {
+      import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js").then(({ getDocs, query: q, where: w, collection: col }) => {
+        getDocs(q(col(db, 'solicitudes'), w('uid', '==', user.uid), w('estado', '==', 'pendiente')))
+          .then(snap => {
+            if (!snap.empty) {
+              btnExistente.style.display = 'none';
+              if (sucExistente) { sucExistente.textContent = '✅ Ya tenés una solicitud pendiente. Te contactaremos a la brevedad.'; sucExistente.style.display = 'block'; }
+            }
+          }).catch(() => {});
+      }).catch(() => {});
+    }
     return;
   }
   const overlay = document.createElement("div");
@@ -749,15 +793,13 @@ function mostrarModalRestriccionDemo() {
       const userEmail = user ? user.email : '';
       const userId = user ? user.uid : '';
 
-      // Verificar si ya existe una solicitud pendiente de este usuario
-      // (envuelto en try/catch propio porque las reglas de Firestore pueden no
-      // permitir lectura de 'solicitudes' a usuarios normales)
+      // Verificar si ya existe una solicitud PENDIENTE de este usuario
+      // (solo estado=='pendiente', las rechazadas no cuentan)
       try {
         const { getDocs: gd3, query: q3, where: w3, collection: col3 } =
           await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-        const solExistQ = await gd3(q3(col3(db, 'solicitudes'), w3('uid', '==', userId)));
-        const tienePendiente1 = !solExistQ.empty && solExistQ.docs.some(d => d.data().estado === 'pendiente');
-        if (tienePendiente1) {
+        const solExistQ = await gd3(q3(col3(db, 'solicitudes'), w3('uid', '==', userId), w3('estado', '==', 'pendiente')));
+        if (!solExistQ.empty) {
           sucDiv.textContent = '✅ Ya tenés una solicitud pendiente. Te contactaremos a la brevedad.';
           sucDiv.style.display = 'block';
           btn.style.display = 'none';
