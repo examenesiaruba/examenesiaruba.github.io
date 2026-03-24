@@ -47,10 +47,12 @@ let _solicitudesUnsubscribe = null;
 let _ultimoSnapshotSolicitudes = null; // guarda el último snapshot para renderizar al abrir el panel
 
 function getDeviceId() {
-  let did = sessionStorage.getItem("iar_device_id");
+  // sessionStorage es único por pestaña/ventana — incluso en el mismo navegador.
+  // Esto permite detectar múltiples ventanas del mismo navegador como sesiones distintas.
+  let did = sessionStorage.getItem("iar_session_id");
   if (!did) {
-    did = "dev_" + Date.now().toString(36) + "_" + Math.random().toString(36).substr(2, 9);
-    sessionStorage.setItem("iar_device_id", did);
+    did = "ses_" + Date.now().toString(36) + "_" + Math.random().toString(36).substr(2, 9);
+    sessionStorage.setItem("iar_session_id", did);
   }
   return did;
 }
@@ -1473,7 +1475,7 @@ async function mostrarPanelAdmin() {
   const overlay = document.createElement("div");
   overlay.id = "admin-overlay";
   overlay.innerHTML = `
-    <div class="admin-box" style="max-width:800px;">
+    <div class="admin-box" style="max-width:1100px;">
       <div class="admin-titulo">
         ⚙️ Panel de Administración
         <button class="admin-btn admin-btn-cerrar" id="admin-cerrar">✕ Cerrar</button>
@@ -1978,8 +1980,76 @@ async function handleLogout() {
   }
 }
 
+// ======== PANTALLA SESIÓN DESPLAZADA ========
+function mostrarPantallaDesplazada(tipo) {
+  ["login-overlay", "sesion-desplazada-overlay"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  });
+  document.body.style.overflow = "hidden";
+
+  const esEliminada = tipo === "eliminada";
+  const overlay = document.createElement("div");
+  overlay.id = "sesion-desplazada-overlay";
+  overlay.style.cssText = `
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    background:rgba(15,23,42,0.92);
+    z-index:999999;display:flex;justify-content:center;align-items:center;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  `;
+  overlay.innerHTML = `
+    <div style="
+      background:#fff;border-radius:20px;padding:44px 36px;
+      width:100%;max-width:420px;margin:16px;text-align:center;
+      box-shadow:0 32px 80px rgba(0,0,0,0.4);
+    ">
+      <div style="
+        width:72px;height:72px;border-radius:50%;
+        background:linear-gradient(135deg,#fef3c7,#fde68a);
+        display:flex;align-items:center;justify-content:center;
+        font-size:2.2rem;margin:0 auto 20px;
+      ">🔐</div>
+      <h2 style="font-size:1.25rem;font-weight:800;color:#0f172a;margin:0 0 10px;">
+        ${esEliminada ? "Sesión finalizada" : "Sesión iniciada en otro lugar"}
+      </h2>
+      <p style="font-size:.92rem;color:#475569;line-height:1.65;margin:0 0 28px;">
+        ${esEliminada
+          ? "Tu sesión fue cerrada por el administrador. Si creés que es un error, iniciá sesión nuevamente o contactá al soporte."
+          : "Se detectó un inicio de sesión con tu cuenta en <strong>otro dispositivo o ventana</strong>. Por seguridad, esta sesión fue cerrada automáticamente para evitar el uso simultáneo."
+        }
+      </p>
+      <div style="
+        background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;
+        padding:14px 18px;margin-bottom:28px;
+        display:flex;align-items:center;gap:12px;text-align:left;
+      ">
+        <span style="font-size:1.4rem;flex-shrink:0;">ℹ️</span>
+        <p style="font-size:.8rem;color:#64748b;margin:0;line-height:1.5;">
+          ${esEliminada
+            ? "Si necesitás acceso, comunicate con el administrador al correo <strong>${CONTACTO_EMAIL}</strong>"
+            : "Si fuiste vos quien inició sesión en el otro lugar, podés ignorar este mensaje. Si no reconocés el acceso, cambiá tu contraseña."
+          }
+        </p>
+      </div>
+      <button id="btn-sesion-desplazada-ok" style="
+        width:100%;padding:13px;
+        background:linear-gradient(135deg,#1e3a8a,#2563eb);
+        color:#fff;border:none;border-radius:10px;
+        font-size:.95rem;font-weight:700;cursor:pointer;transition:all .15s;
+      ">Iniciar sesión nuevamente</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  document.getElementById("btn-sesion-desplazada-ok").addEventListener("click", () => {
+    overlay.remove();
+    mostrarLogin();
+  });
+}
+
 // ======== MONITOREO DE SESIÓN + AUTO-LOGOUT POR INACTIVIDAD ========
 let monitoreoInterval = null;
+let monitoreoSnapshot = null;
+let _monitoreoUserRef = null;
 let inactividadTimeout = null;
 let inactividadAviso1 = null;   // aviso a los 20 min
 let inactividadAviso2 = null;   // aviso a los 25 min
@@ -2124,55 +2194,97 @@ function detenerListenersActividad() {
 }
 
 function iniciarMonitoreoSesion(user) {
-  if (monitoreoInterval) clearInterval(monitoreoInterval);
-  const deviceId = getDeviceId();
+  if (monitoreoInterval) { clearInterval(monitoreoInterval); monitoreoInterval = null; }
+  if (monitoreoSnapshot) { monitoreoSnapshot(); monitoreoSnapshot = null; }
 
-  // Iniciar sistema de inactividad
+  const deviceId = getDeviceId();
   iniciarListenersActividad(user);
 
-  monitoreoInterval = setInterval(async () => {
-    try {
-      if (!auth.currentUser) {
-        clearInterval(monitoreoInterval);
-        detenerListenersActividad();
-        limpiarUI();
-        mostrarLogin("Tu sesión fue cerrada. Ingresá nuevamente.");
-        return;
-      }
-      const sessionRef = doc(db, "sessions", user.uid);
-      const snap = await getDoc(sessionRef);
+  // ── LISTENER EN TIEMPO REAL ──────────────────────────────────────────
+  // Detecta INMEDIATAMENTE si otra ventana o dispositivo inició sesión.
+  // Reacciona en menos de 1 segundo, sin depender de polling.
+  const sessionRef = doc(db, "sessions", user.uid);
+  let primeraLectura = true;
+
+  monitoreoSnapshot = onSnapshot(sessionRef,
+    (snap) => {
+      if (primeraLectura) { primeraLectura = false; return; }
+
+      // Documento eliminado → sesión cerrada externamente (ej: admin eliminó usuario)
       if (!snap.exists()) {
-        await signOut(auth);
-        clearInterval(monitoreoInterval);
+        if (monitoreoSnapshot) { monitoreoSnapshot(); monitoreoSnapshot = null; }
+        if (monitoreoInterval) { clearInterval(monitoreoInterval); monitoreoInterval = null; }
         detenerListenersActividad();
         limpiarUI();
-        mostrarLogin("Tu sesión fue cerrada desde otro dispositivo.");
+        mostrarPantallaDesplazada("eliminada");
         return;
       }
+
       const data = snap.data();
       const esAdmin = user.email === ADMIN_EMAIL;
+
+      // deviceId cambió → otra ventana o dispositivo tomó la sesión
       if (!esAdmin && data.deviceId && data.deviceId !== deviceId) {
-        await signOut(auth);
-        clearInterval(monitoreoInterval);
+        if (monitoreoSnapshot) { monitoreoSnapshot(); monitoreoSnapshot = null; }
+        if (monitoreoInterval) { clearInterval(monitoreoInterval); monitoreoInterval = null; }
         detenerListenersActividad();
         limpiarUI();
-        mostrarLogin("⚠️ Tu sesión fue tomada por otro dispositivo.");
-        return;
+        mostrarPantallaDesplazada("desplazada");
       }
-      // Admin: si cambió el deviceId (nueva pestaña/navegador), sincronizarlo
+    },
+    (error) => {
+      console.warn("[IAR] Error en listener de sesión:", error.code || error.message);
+    }
+  );
+
+  // ── HEARTBEAT ────────────────────────────────────────────────────────
+  // Actualiza lastActivity cada 60s. Se pausa cuando la pestaña está oculta
+  // para evitar escrituras innecesarias.
+  let _heartbeatPausado = false;
+
+  function _onVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+      _heartbeatPausado = true;
+    } else {
+      setTimeout(() => { _heartbeatPausado = false; }, 3000);
+    }
+  }
+  document.addEventListener('visibilitychange', _onVisibilityChange);
+  window.addEventListener('focus', () => setTimeout(() => { _heartbeatPausado = false; }, 2000));
+
+  _monitoreoUserRef = user;
+  user._cleanupVisibility = () => {
+    document.removeEventListener('visibilitychange', _onVisibilityChange);
+  };
+
+  monitoreoInterval = setInterval(async () => {
+    if (_heartbeatPausado || document.visibilityState === 'hidden') return;
+    if (!auth.currentUser) return;
+    try {
+      const snap = await getDoc(sessionRef);
+      if (!snap.exists()) return; // onSnapshot ya lo detectó o lo detectará
+      const data = snap.data();
+      const esAdmin = user.email === ADMIN_EMAIL;
+      // Admin: sincronizar deviceId en heartbeat. Usuario: solo actualizar lastActivity.
       const updateData = esAdmin
         ? { ...data, deviceId, lastActivity: serverTimestamp() }
         : { ...data, lastActivity: serverTimestamp() };
       await setDoc(sessionRef, updateData);
     } catch (err) {
-      console.warn("Error en monitoreo:", err);
+      console.warn("[IAR] Error en heartbeat:", err.code || err.message);
     }
-  }, 30000);
+  }, 60000);
 }
 
 function limpiarUI() {
   document.body.style.paddingBottom = "";
   if (countdownBarInterval) { clearInterval(countdownBarInterval); countdownBarInterval = null; }
+  if (monitoreoInterval) { clearInterval(monitoreoInterval); monitoreoInterval = null; }
+  if (monitoreoSnapshot) { monitoreoSnapshot(); monitoreoSnapshot = null; }
+  if (_monitoreoUserRef && _monitoreoUserRef._cleanupVisibility) {
+    _monitoreoUserRef._cleanupVisibility();
+    _monitoreoUserRef = null;
+  }
   window._demoCheckEnabled = false;
   licenciaActual = null;
   detenerListenersActividad();
