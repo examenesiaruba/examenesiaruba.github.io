@@ -1177,56 +1177,13 @@ async function handleLogin() {
 
     loading.textContent = "Verificando sesión activa...";
     const sessionRef = doc(db, "sessions", user.uid);
-    const sessionSnap = await getDoc(sessionRef);
     const deviceId = getDeviceId();
 
-    if (sessionSnap.exists()) {
-      const data = sessionSnap.data();
-      if (data.deviceId && data.deviceId !== deviceId) {
-        // Hay sesión activa con otro deviceId
-        const emailSesion = data.email || '';
-        const emailActual = user.email || '';
-        const esAdmin = emailActual === ADMIN_EMAIL;
-
-        // Admin siempre puede tomar la sesión sin restricciones
-        if (esAdmin) {
-          console.log('[IAR] Cuenta admin → tomando sesión sin restricciones.');
-          // continúa y sobreescribe la sesión más abajo
-        }
-        // Si es el mismo email → sesión residual, tomar automáticamente
-        else if (emailSesion === emailActual) {
-          console.log('[IAR] Mismo usuario, sesión residual detectada → tomando sesión automáticamente.');
-          // continua y sobreescribe la sesión más abajo
-        } else {
-          // Verificar cuánto tiempo lleva inactiva
-          const lastAct = data.lastActivity
-            ? (data.lastActivity.toDate ? data.lastActivity.toDate() : new Date(data.lastActivity))
-            : null;
-          const minutosInactiva = lastAct ? (Date.now() - lastAct.getTime()) / 60000 : 999;
-
-          if (minutosInactiva >= 2) {
-            // Lleva 2+ minutos inactiva → tomar la sesión automáticamente
-            console.log("Sesión anterior inactiva por 2+ min, tomando sesión...");
-          } else {
-            // Sesión reciente de otro usuario → bloquear con cuenta regresiva
-            await signOut(auth);
-            btn.disabled = false;
-            loading.textContent = "";
-            const segsRestantes = Math.max(0, Math.ceil((2 * 60) - (minutosInactiva * 60)));
-            errDiv.textContent = `⚠️ Hay una sesión activa en otro dispositivo. Se liberará automáticamente en ${segsRestantes} segundos, o cerrá sesión manualmente desde ese dispositivo.`;
-            errDiv.style.display = "block";
-
-            // Reintentar automáticamente cuando pasen los segundos restantes
-            setTimeout(() => {
-              if (document.getElementById("login-overlay")?.style.display !== "none") {
-                handleLogin();
-              }
-            }, (segsRestantes + 3) * 1000);
-            return;
-          }
-        }
-      }
-    }
+    // Siempre sobreescribir la sesión con el nuevo deviceId.
+    // El onSnapshot activo en cualquier otra ventana o dispositivo
+    // detectará el cambio y mostrará la pantalla de "sesión desplazada"
+    // automáticamente, cerrando esa sesión anterior.
+    // El admin puede abrir sesión libremente sin restricciones.
 
     await setDoc(sessionRef, {
       deviceId,
