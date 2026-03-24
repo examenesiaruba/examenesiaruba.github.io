@@ -1394,6 +1394,7 @@ function renderizarSolicitudesAdmin(snapshot) {
         <td style="font-family:monospace;font-size:.72rem;" title="${uid}">${uidCorto}</td>
         <td>
           <select id="sol-plan-sel-${d.id}" style="font-size:.75rem;padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;">
+            <option value="1 min" ${s.plan==="1 min"?"selected":""}>⏱ 1 min (prueba)</option>
             <option value="1 semana" ${s.plan==="1 semana"?"selected":""}>1 semana</option>
             <option value="1 mes" ${s.plan==="1 mes"||!s.plan?"selected":""}>1 mes</option>
             <option value="inhabilitar" style="color:#dc2626;font-weight:700;">🚫 Inhabilitar (prueba)</option>
@@ -1525,8 +1526,13 @@ async function mostrarPanelAdmin() {
 }
 
 function calcularVencimiento(plan) {
-  const dias = { "1semana":7, "1mes":30 };
   if (plan === "devida") return null;
+  if (plan === "1min") {
+    const d = new Date();
+    d.setTime(d.getTime() + 60 * 1000); // +1 minuto en ms
+    return d;
+  }
+  const dias = { "1semana":7, "1mes":30 };
   const d = new Date();
   d.setDate(d.getDate() + dias[plan]);
   return d;
@@ -1662,6 +1668,7 @@ async function cargarDatosAdmin() {
           <td>${estadoBadge}</td>
           <td style="white-space:nowrap;">
             <select id="sel-plan-${uid}" style="font-size:.72rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;">
+              <option value="1min">⏱ 1 min (prueba)</option>
               <option value="1semana">1 semana</option>
               <option value="1mes" selected>1 mes</option>
               <option value="inhabilitar" style="color:#dc2626;font-weight:700;">🚫 Inhabilitar (prueba)</option>
@@ -1731,9 +1738,9 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
     return;
   }
 
-  const planMap = { "1 mes":"1mes","1 semana":"1semana" };
+  const planMap = { "1 mes":"1mes","1 semana":"1semana","1 min":"1min" };
   const planKey = planMap[planLabel] || "1mes";
-  const planNombres = { "1semana":"1 semana","1mes":"1 mes" };
+  const planNombres = { "1semana":"1 semana","1mes":"1 mes","1min":"1 min" };
 
   // Fix 5: vencimiento desde el momento exacto de aprobación (justo ahora)
   const venc = calcularVencimiento(planKey);
@@ -1842,7 +1849,7 @@ window.reactivarUsuario = async function(uid) {
     return;
   }
 
-  const planNombres = { "1semana":"1 semana","1mes":"1 mes" };
+  const planNombres = { "1semana":"1 semana","1mes":"1 mes","1min":"1 min" };
   const venc = calcularVencimiento(plan);
   const ahora = new Date();
   const licData = { porVida: false, esDemo: false, inhabilitada: false, plan: planNombres[plan], vencimiento: venc, aprobadoEn: ahora };
