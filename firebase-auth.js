@@ -1343,6 +1343,7 @@ function renderizarSolicitudesAdmin(snapshot) {
           <select id="sol-plan-sel-${d.id}" style="font-size:.75rem;padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;">
             <option value="1 semana" ${s.plan==="1 semana"?"selected":""}>1 semana</option>
             <option value="1 mes" ${s.plan==="1 mes"||!s.plan?"selected":""}>1 mes</option>
+            <option value="1 min TEST" ${s.plan==="1 min TEST"?"selected":""} style="color:#d97706;font-style:italic;">⚙️ 1 min (TEST)</option>
           </select>
         </td>
         <td style="font-size:.8rem;">${fecha}</td>
@@ -1471,10 +1472,14 @@ async function mostrarPanelAdmin() {
 }
 
 function calcularVencimiento(plan) {
-  const dias = { "1semana":7, "1mes":30 };
   if (plan === "devida") return null;
   const d = new Date();
-  d.setDate(d.getDate() + dias[plan]);
+  if (plan === "1min") {
+    d.setTime(d.getTime() + 60 * 1000);
+    return d;
+  }
+  const dias = { "1semana":7, "1mes":30 };
+  d.setDate(d.getDate() + (dias[plan] || 30));
   return d;
 }
 
@@ -1607,6 +1612,7 @@ async function cargarDatosAdmin() {
             <select id="sel-plan-${uid}" style="font-size:.72rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;">
               <option value="1semana">1 semana</option>
               <option value="1mes" selected>1 mes</option>
+              <option value="1min" style="color:#d97706;font-style:italic;">⚙️ 1 min (TEST)</option>
             </select>
             <button class="admin-btn admin-btn-success" style="font-size:.72rem;padding:3px 8px;margin-left:3px;"
               onclick="window.reactivarUsuario('${uid}')">▶ Activar</button>
@@ -1631,9 +1637,9 @@ async function cargarDatosAdmin() {
 // Si es nuevo, se crea su entrada. La solicitud se elimina de Firestore (no
 // solo se marca "aprobada") para que desaparezca de la lista inmediatamente.
 window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) {
-  const planMap = { "1 mes":"1mes","1 semana":"1semana" };
+  const planMap = { "1 mes":"1mes","1 semana":"1semana","1 min TEST":"1min" };
   const planKey = planMap[planLabel] || "1mes";
-  const planNombres = { "1semana":"1 semana","1mes":"1 mes" };
+  const planNombres = { "1semana":"1 semana","1mes":"1 mes","1min":"1 min (TEST)" };
 
   // Fix 5: vencimiento desde el momento exacto de aprobación (justo ahora)
   const venc = calcularVencimiento(planKey);
@@ -1680,17 +1686,30 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
       throw new Error("No se encontró la licencia del usuario. Verificá que el UID o email sea correcto.");
     }
 
-    // Fix 3 & 4: Eliminar la solicitud de Firestore para que desaparezca
-    // de la lista inmediatamente (el listener onSnapshot actualizará la UI solo)
+    // Eliminar la solicitud de Firestore
     await deleteDoc(doc(db, "solicitudes", docId));
 
+    // Eliminar la fila del DOM de forma inmediata
+    document.querySelectorAll(".admin-tabla tr").forEach(row => {
+      if (row.innerHTML.includes(docId)) row.remove();
+    });
+
+    // Filtrar el doc aprobado del snapshot en memoria para que no reaparezca
+    if (_ultimoSnapshotSolicitudes) {
+      const docsActualizados = [];
+      _ultimoSnapshotSolicitudes.forEach(d => { if (d.id !== docId) docsActualizados.push(d); });
+      const fakeSnap = { size: docsActualizados.length, forEach: (fn) => docsActualizados.forEach(fn) };
+      renderizarSolicitudesAdmin(fakeSnap);
+    }
+
     if (msgDiv) {
-      msgDiv.textContent = `✅ Licencia activada para ${email} (${planNombres[planKey]}) — vence el ${venc.toLocaleDateString("es-AR")}`;
+      const vencStr = planKey === "1min" ? "en 1 minuto (TEST)" : (venc ? "el " + venc.toLocaleDateString("es-AR") : "ahora");
+      msgDiv.textContent = `✅ Licencia activada para ${email} (${planNombres[planKey]}) — vence ${vencStr}`;
       msgDiv.className = "admin-msg ok";
       setTimeout(() => { if (msgDiv) { msgDiv.style.display = "none"; msgDiv.className = "admin-msg"; } }, 5000);
     }
 
-    // Recargar solo la tabla de usuarios (las solicitudes ya se actualizan por el listener)
+    // Recargar la tabla de usuarios con licencia (las solicitudes ya se actualizan arriba)
     await cargarDatosAdmin();
   } catch(e) {
     console.error("Error aprobando solicitud:", e);
@@ -1707,10 +1726,26 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
 window.rechazarSolicitud = async function(docId) {
   const msgDiv = document.getElementById("admin-msg-acciones");
   try {
-    // Eliminar directamente sin confirm() bloqueante
+    // 1. Eliminar de Firestore
     await deleteDoc(doc(db, "solicitudes", docId));
-    // El listener onSnapshot actualizará la lista automáticamente.
-    // Solo mostramos mensaje de feedback.
+
+    // 2. Eliminar la fila del DOM de forma inmediata (sin esperar al snapshot)
+    // Buscamos cualquier botón cuyo onclick contenga el docId y eliminamos la fila
+    document.querySelectorAll(".admin-tabla tr").forEach(row => {
+      if (row.innerHTML.includes(docId)) row.remove();
+    });
+
+    // 3. Si el snapshot del listener aún tiene el doc en cache, forzar re-render
+    // con los datos actualizados (excepto el eliminado)
+    if (_ultimoSnapshotSolicitudes) {
+      // Filtrar el doc eliminado del snapshot en memoria (workaround cache)
+      const docsActualizados = [];
+      _ultimoSnapshotSolicitudes.forEach(d => { if (d.id !== docId) docsActualizados.push(d); });
+      // Recrear objeto fake para renderizar
+      const fakeSnap = { size: docsActualizados.length, forEach: (fn) => docsActualizados.forEach(fn) };
+      renderizarSolicitudesAdmin(fakeSnap);
+    }
+
     if (msgDiv) {
       msgDiv.textContent = "Solicitud rechazada y eliminada.";
       msgDiv.className = "admin-msg err";
@@ -1727,14 +1762,32 @@ window.reactivarUsuario = async function(uid) {
   const sel = document.getElementById("sel-plan-" + uid);
   if (!sel) return;
   const plan = sel.value;
-  const planNombres = { "1semana":"1 semana","1mes":"1 mes" };
+  const planNombres = { "1semana":"1 semana","1mes":"1 mes","1min":"1 min (TEST)" };
   const venc = calcularVencimiento(plan);
   const ahora = new Date();
   const licData = { porVida: false, plan: planNombres[plan], vencimiento: venc, aprobadoEn: ahora };
   try {
     const snap = await getDoc(doc(db, "licencias", uid));
-    if (snap.exists() && snap.data().email) licData.email = snap.data().email;
+    let emailUsuario = null;
+    if (snap.exists() && snap.data().email) {
+      emailUsuario = snap.data().email;
+      licData.email = emailUsuario;
+    }
     await setDoc(doc(db, "licencias", uid), licData);
+
+    // Eliminar solicitudes pendientes de este usuario (para que no queden en la lista)
+    const { getDocs: gd3, query: q3, where: w3, collection: col3 } =
+      await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const solQ = await gd3(q3(col3(db, "solicitudes"), w3("uid", "==", uid), w3("estado", "==", "pendiente")));
+    const elimPromises = [];
+    solQ.forEach(d => elimPromises.push(deleteDoc(doc(db, "solicitudes", d.id))));
+    // También buscar por email si no encontró por uid
+    if (solQ.empty && emailUsuario) {
+      const solQEmail = await gd3(q3(col3(db, "solicitudes"), w3("email", "==", emailUsuario), w3("estado", "==", "pendiente")));
+      solQEmail.forEach(d => elimPromises.push(deleteDoc(doc(db, "solicitudes", d.id))));
+    }
+    if (elimPromises.length > 0) await Promise.all(elimPromises);
+
     await cargarDatosAdmin();
   } catch(err) { alert("Error al reactivar: " + (err.message || err)); }
 };
