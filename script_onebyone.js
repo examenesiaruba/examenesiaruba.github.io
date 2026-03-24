@@ -1061,8 +1061,6 @@
 
       if (allAnswered) {
         setTimeout(() => _mostrarResultadoFinalOAV(seccionId), 600);
-      } else if (nextUnanswered !== null) {
-        setTimeout(() => { window._oavGoTo(seccionId, nextUnanswered); }, 1100);
       }
 
     } catch (e) {
