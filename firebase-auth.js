@@ -45,6 +45,7 @@ let licenciaActual = null;
 // Listener en tiempo real de solicitudes pendientes
 let _solicitudesUnsubscribe = null;
 let _ultimoSnapshotSolicitudes = null; // guarda el último snapshot para renderizar al abrir el panel
+let _esperandoSnapshotFresco = false;  // evita re-renderizar con snapshot viejo tras rechazar/aprobar
 
 function getDeviceId() {
   let did = sessionStorage.getItem("iar_device_id");
@@ -104,6 +105,11 @@ async function verificarLicencia(userId) {
     }
 
     const data = licSnap.data();
+
+    // ── Licencia INHABILITADA (prueba admin) ──
+    if (data.inhabilitada === true) {
+      return { valida: false, inhabilitada: true, mensaje: "Tu licencia ha sido inhabilitada.\nContactanos para más información." };
+    }
 
     // ── Licencia DEMO ──
     if (data.esDemo === true) {
@@ -925,7 +931,7 @@ async function enviarSolicitud() {
   }
 }
 
-function mostrarLicenciaVencida(mensaje, esDemo, userData) {
+function mostrarLicenciaVencida(mensaje, esDemo, userData, inhabilitada) {
   inyectarEstilos();
   document.body.style.overflow = "hidden";
   const loginOverlay = document.getElementById("login-overlay");
@@ -936,6 +942,48 @@ function mostrarLicenciaVencida(mensaje, esDemo, userData) {
   const currentUser = auth.currentUser
     ? { email: auth.currentUser.email, uid: auth.currentUser.uid }
     : (userData || null);
+
+  const overlay = document.createElement("div");
+  overlay.id = "licencia-vencida-overlay";
+
+  // ── Modo INHABILITADA (prueba admin) ──
+  if (inhabilitada) {
+    overlay.innerHTML = `
+      <div class="lv-box">
+        <div class="lv-icon">🚫</div>
+        <div class="lv-titulo" style="color:#dc2626;">Licencia Inhabilitada</div>
+        <div class="lv-msg">Tu licencia ha sido inhabilitada.</div>
+        <div class="lv-msg">Para más información contactanos:</div>
+        <div class="lv-contacto" style="text-align:center;">
+          <span
+            id="lv-email-contacto"
+            onclick="window._copiarEmailLV()"
+            title="Clic para copiar"
+            style="display:inline-block;background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:8px;padding:8px 16px;font-weight:700;color:#0d7490;font-size:.95rem;cursor:pointer;-webkit-user-select:text!important;user-select:text!important;word-break:break-all;margin-bottom:4px;">
+            ${CONTACTO_EMAIL}
+          </span>
+          <div id="lv-copy-msg" style="font-size:.75rem;color:#059669;display:none;margin-bottom:6px;">✅ Copiado al portapapeles</div>
+        </div>
+        <button class="lv-btn lv-btn-sec" id="lv-btn-cerrar" style="margin-top:16px;width:100%;">Cerrar sesión</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    window._copiarEmailLV = function() {
+      try {
+        navigator.clipboard.writeText(CONTACTO_EMAIL).then(() => {
+          const m = document.getElementById('lv-copy-msg');
+          if (m) { m.style.display = 'block'; setTimeout(() => { m.style.display = 'none'; }, 2500); }
+        });
+      } catch(e) {}
+    };
+    document.getElementById("lv-btn-cerrar").addEventListener("click", async () => {
+      const ov = document.getElementById("licencia-vencida-overlay");
+      if (ov) ov.remove();
+      await handleLogout();
+      mostrarLogin();
+    });
+    return;
+  }
 
   const overlay = document.createElement("div");
   overlay.id = "licencia-vencida-overlay";
@@ -1096,7 +1144,11 @@ async function handleLogin() {
     if (!licencia.valida) {
       btn.disabled = false;
       loading.textContent = "";
-      if (licencia.vencida) {
+      if (licencia.inhabilitada) {
+        // Licencia inhabilitada — mostrar pantalla de licencia vencida con mensaje especial
+        const userDataParaVencida = { email: user.email, uid: user.uid };
+        mostrarLicenciaVencida(licencia.mensaje, false, userDataParaVencida, true);
+      } else if (licencia.vencida) {
         // NO hacemos signOut aquí — el usuario sigue autenticado para poder enviar
         // la solicitud de renovación a Firestore. El signOut ocurre al presionar
         // "Cerrar sesión" dentro del overlay de licencia vencida.
@@ -1276,6 +1328,7 @@ function iniciarListenerSolicitudes() {
   _solicitudesUnsubscribe = onSnapshot(q, (snapshot) => {
     // Guardar siempre el último snapshot para renderizarlo cuando se abra el panel
     _ultimoSnapshotSolicitudes = snapshot;
+    _esperandoSnapshotFresco = false; // llegó snapshot fresco, ya podemos renderizar
     const total = snapshot.size;
 
     // Actualizar badge en el botón Admin
@@ -1343,6 +1396,7 @@ function renderizarSolicitudesAdmin(snapshot) {
           <select id="sol-plan-sel-${d.id}" style="font-size:.75rem;padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px;">
             <option value="1 semana" ${s.plan==="1 semana"?"selected":""}>1 semana</option>
             <option value="1 mes" ${s.plan==="1 mes"||!s.plan?"selected":""}>1 mes</option>
+            <option value="inhabilitar" style="color:#dc2626;font-weight:700;">🚫 Inhabilitar (prueba)</option>
           </select>
         </td>
         <td style="font-size:.8rem;">${fecha}</td>
@@ -1366,8 +1420,8 @@ function renderizarSolicitudesAdmin(snapshot) {
 async function mostrarPanelAdmin() {
   if (document.getElementById("admin-overlay")) {
     document.getElementById("admin-overlay").style.display = "flex";
-    // Renderizar solicitudes guardadas inmediatamente antes de cargar el resto
-    if (_ultimoSnapshotSolicitudes) {
+    // Renderizar solicitudes guardadas inmediatamente, solo si no esperamos un snapshot fresco
+    if (_ultimoSnapshotSolicitudes && !_esperandoSnapshotFresco) {
       renderizarSolicitudesAdmin(_ultimoSnapshotSolicitudes);
     }
     await cargarDatosAdmin();
@@ -1524,9 +1578,10 @@ async function cargarDatosAdmin() {
 
     // ── Solicitudes pendientes ──
     // Si ya tenemos un snapshot guardado del listener, renderizarlo inmediatamente
-    if (_ultimoSnapshotSolicitudes) {
+    // PERO solo si no estamos esperando un snapshot fresco (tras rechazar/aprobar)
+    if (_ultimoSnapshotSolicitudes && !_esperandoSnapshotFresco) {
       renderizarSolicitudesAdmin(_ultimoSnapshotSolicitudes);
-    } else {
+    } else if (!_esperandoSnapshotFresco) {
       if (solNuevosDiv) solNuevosDiv.innerHTML = '<em style="color:#94a3b8;font-size:.82rem;">Esperando datos en tiempo real...</em>';
       if (solRenovDiv) solRenovDiv.innerHTML = '<em style="color:#94a3b8;font-size:.82rem;">Esperando datos en tiempo real...</em>';
     }
@@ -1562,11 +1617,13 @@ async function cargarDatosAdmin() {
         const vencDate = l.vencimiento ? (l.vencimiento.toDate ? l.vencimiento.toDate() : new Date(l.vencimiento)) : null;
         const aprobadoDate = l.aprobadoEn ? (l.aprobadoEn.toDate ? l.aprobadoEn.toDate() : new Date(l.aprobadoEn)) : null;
         const esDemo = l.esDemo === true;
-        const vencido = !l.porVida && !esDemo && vencDate && ahora > vencDate;
+        const inhabilitada = l.inhabilitada === true;
+        const vencido = !l.porVida && !esDemo && !inhabilitada && vencDate && ahora > vencDate;
 
         // Estado badge
         let estadoBadge;
-        if (esDemo) estadoBadge = '<span class="admin-badge badge-demo">🆓 Demo</span>';
+        if (inhabilitada) estadoBadge = '<span class="admin-badge" style="background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;">🚫 Inhabilitado</span>';
+        else if (esDemo) estadoBadge = '<span class="admin-badge badge-demo">🆓 Demo</span>';
         else if (l.porVida) estadoBadge = '<span class="admin-badge badge-activo">✅ Activo</span>';
         else if (vencido) estadoBadge = '<span class="admin-badge badge-vencido">❌ Vencido</span>';
         else estadoBadge = '<span class="admin-badge badge-activo">✅ Activo</span>';
@@ -1591,7 +1648,7 @@ async function cargarDatosAdmin() {
           }
         }
 
-        const rowStyle = vencido ? 'style="background:#fff7f7;"' : (esDemo ? 'style="background:#fffbeb;"' : '');
+        const rowStyle = inhabilitada ? 'style="background:#f9fafb;opacity:.7;"' : (vencido ? 'style="background:#fff7f7;"' : (esDemo ? 'style="background:#fffbeb;"' : ''));
         const aprobadoStr = aprobadoDate ? aprobadoDate.toLocaleDateString("es-AR", {day:"2-digit",month:"2-digit",year:"numeric"}) : '-';
         const vencStr = l.porVida ? '∞' : (vencDate ? vencDate.toLocaleDateString("es-AR", {day:"2-digit",month:"2-digit",year:"numeric"}) : '-');
 
@@ -1607,6 +1664,7 @@ async function cargarDatosAdmin() {
             <select id="sel-plan-${uid}" style="font-size:.72rem;padding:2px 4px;border:1px solid #cbd5e1;border-radius:4px;">
               <option value="1semana">1 semana</option>
               <option value="1mes" selected>1 mes</option>
+              <option value="inhabilitar" style="color:#dc2626;font-weight:700;">🚫 Inhabilitar (prueba)</option>
             </select>
             <button class="admin-btn admin-btn-success" style="font-size:.72rem;padding:3px 8px;margin-left:3px;"
               onclick="window.reactivarUsuario('${uid}')">▶ Activar</button>
@@ -1631,6 +1689,48 @@ async function cargarDatosAdmin() {
 // Si es nuevo, se crea su entrada. La solicitud se elimina de Firestore (no
 // solo se marca "aprobada") para que desaparezca de la lista inmediatamente.
 window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) {
+  // ── Caso especial: inhabilitar licencia ──
+  if (planLabel === "inhabilitar") {
+    const msgDiv = document.getElementById("admin-msg-acciones");
+    try {
+      const licData = { inhabilitada: true, email };
+      let licSet = false;
+      if (uidSolicitud && uidSolicitud !== '-') {
+        try {
+          const snap = await getDoc(doc(db, "licencias", uidSolicitud));
+          if (snap.exists()) {
+            await updateDoc(doc(db, "licencias", uidSolicitud), { inhabilitada: true });
+            licSet = true;
+          }
+        } catch(e) { console.warn("No se pudo updateDoc por UID:", e); }
+      }
+      if (!licSet) {
+        const { getDocs, collection: col2, query: q2, where: w2 } =
+          await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        const licQ = await getDocs(q2(col2(db, "licencias"), w2("email", "==", email)));
+        if (!licQ.empty) {
+          const promises = [];
+          licQ.forEach(d2 => promises.push(updateDoc(doc(db, "licencias", d2.id), { inhabilitada: true })));
+          await Promise.all(promises);
+          licSet = true;
+        }
+      }
+      if (!licSet) throw new Error("No se encontró la licencia del usuario.");
+      _esperandoSnapshotFresco = true;
+      await deleteDoc(doc(db, "solicitudes", docId));
+      if (msgDiv) {
+        msgDiv.textContent = `🚫 Licencia inhabilitada para ${email}`;
+        msgDiv.className = "admin-msg err";
+        setTimeout(() => { if (msgDiv) { msgDiv.style.display = "none"; msgDiv.className = "admin-msg"; } }, 5000);
+      }
+      await cargarDatosAdmin();
+    } catch(e) {
+      console.error("Error inhabilitando:", e);
+      if (msgDiv) { msgDiv.textContent = "❌ Error al inhabilitar: " + (e.message || e); msgDiv.className = "admin-msg err"; }
+    }
+    return;
+  }
+
   const planMap = { "1 mes":"1mes","1 semana":"1semana" };
   const planKey = planMap[planLabel] || "1mes";
   const planNombres = { "1semana":"1 semana","1mes":"1 mes" };
@@ -1682,6 +1782,7 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
 
     // Fix 3 & 4: Eliminar la solicitud de Firestore para que desaparezca
     // de la lista inmediatamente (el listener onSnapshot actualizará la UI solo)
+    _esperandoSnapshotFresco = true;
     await deleteDoc(doc(db, "solicitudes", docId));
 
     if (msgDiv) {
@@ -1693,6 +1794,7 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
     // Recargar solo la tabla de usuarios (las solicitudes ya se actualizan por el listener)
     await cargarDatosAdmin();
   } catch(e) {
+    _esperandoSnapshotFresco = false;
     console.error("Error aprobando solicitud:", e);
     if (msgDiv) {
       msgDiv.textContent = "❌ Error al aprobar: " + (e.message || e);
@@ -1707,7 +1809,9 @@ window.aprobarSolicitud = async function(docId, email, uidSolicitud, planLabel) 
 window.rechazarSolicitud = async function(docId) {
   const msgDiv = document.getElementById("admin-msg-acciones");
   try {
-    // Eliminar directamente sin confirm() bloqueante
+    // Marcar que esperamos snapshot fresco — evita que cargarDatosAdmin
+    // re-renderice con el snapshot viejo mientras llega la actualización
+    _esperandoSnapshotFresco = true;
     await deleteDoc(doc(db, "solicitudes", docId));
     // El listener onSnapshot actualizará la lista automáticamente.
     // Solo mostramos mensaje de feedback.
@@ -1717,6 +1821,7 @@ window.rechazarSolicitud = async function(docId) {
       setTimeout(() => { if (msgDiv) { msgDiv.style.display = "none"; msgDiv.className = "admin-msg"; } }, 3000);
     }
   } catch(e) {
+    _esperandoSnapshotFresco = false;
     console.error("Error eliminando solicitud:", e);
     if (msgDiv) { msgDiv.textContent = "Error al rechazar: " + (e.message || e); msgDiv.className = "admin-msg err"; }
   }
@@ -1727,10 +1832,20 @@ window.reactivarUsuario = async function(uid) {
   const sel = document.getElementById("sel-plan-" + uid);
   if (!sel) return;
   const plan = sel.value;
+
+  // ── Caso especial: inhabilitar licencia ──
+  if (plan === "inhabilitar") {
+    try {
+      await updateDoc(doc(db, "licencias", uid), { inhabilitada: true });
+      await cargarDatosAdmin();
+    } catch(err) { alert("Error al inhabilitar: " + (err.message || err)); }
+    return;
+  }
+
   const planNombres = { "1semana":"1 semana","1mes":"1 mes" };
   const venc = calcularVencimiento(plan);
   const ahora = new Date();
-  const licData = { porVida: false, plan: planNombres[plan], vencimiento: venc, aprobadoEn: ahora };
+  const licData = { porVida: false, esDemo: false, inhabilitada: false, plan: planNombres[plan], vencimiento: venc, aprobadoEn: ahora };
   try {
     const snap = await getDoc(doc(db, "licencias", uid));
     if (snap.exists() && snap.data().email) licData.email = snap.data().email;
