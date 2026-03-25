@@ -2520,9 +2520,9 @@ function iniciarChat(email, esDemo) {
   _inyectarBotonChat();
 }
 
-function _actualizarVisibilidadChat() {
-  const hash = window.location.hash;
-  const enMenu = hash === '' || hash === '#' || hash === '#menu';
+// Mostrar/ocultar chat según si estamos en el menú principal
+// Se llama explícitamente desde showMenu() y showSection() via window.chatMostrarEnMenu
+function _actualizarVisibilidadChat(enMenu) {
   const btn = document.getElementById('btn-chat-flotante');
   const ventana = document.getElementById('chat-ventana');
   if (btn) btn.style.display = enMenu ? '' : 'none';
@@ -2531,6 +2531,11 @@ function _actualizarVisibilidadChat() {
     if (btn) { btn.classList.remove('chat-abierto'); btn.innerHTML = '💬'; }
   }
 }
+
+// Hook global: script.js llama window.chatMostrarEnMenu(true/false) al navegar
+window.chatMostrarEnMenu = function(enMenu) {
+  _actualizarVisibilidadChat(enMenu);
+};
 
 function _inyectarBotonChat() {
   if (document.getElementById('btn-chat-flotante')) return;
@@ -2544,9 +2549,16 @@ function _inyectarBotonChat() {
   btn.addEventListener('click', () => _toggleChat());
   document.body.appendChild(btn);
 
-  // Controlar visibilidad según la página actual
-  _actualizarVisibilidadChat();
-  window.addEventListener('hashchange', _actualizarVisibilidadChat);
+  // Estado inicial: mostrar solo si estamos en el menú
+  const hashInicial = window.location.hash;
+  const enMenuInicial = hashInicial === '' || hashInicial === '#' || hashInicial === '#menu';
+  _actualizarVisibilidadChat(enMenuInicial);
+
+  // Respaldo: escuchar hashchange para navegación con botón atrás/adelante del browser
+  window.addEventListener('hashchange', () => {
+    const h = window.location.hash;
+    _actualizarVisibilidadChat(h === '' || h === '#' || h === '#menu');
+  });
 
   // Ventana del chat
   const ventana = document.createElement('div');
