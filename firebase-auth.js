@@ -1290,6 +1290,12 @@ function ocultarLogin(navegarAMenu = false) {
 
 // ======== BARRA INFERIOR ESTÁTICA ========
 function mostrarBarraSesion(email, licencia) {
+  // Exponer si es admin para que script.js pueda usarlo
+  window._esAdmin = (email === ADMIN_EMAIL);
+
+  // Mostrar u ocultar el ítem "Ver Respuestas Correctas" del menú según si es admin
+  const liRespuestas = document.querySelector('li[onclick="mostrarRespuestasCorrectas()"]');
+  if (liRespuestas) liRespuestas.style.display = window._esAdmin ? '' : 'none';
   // Eliminar barra anterior si existe (para re-renderizar)
   const barraVieja = document.getElementById("barra-sesion");
   if (barraVieja) barraVieja.remove();
@@ -1998,10 +2004,41 @@ window.borrarTodosLosChats = async function() {
 // ======== LOGOUT ========
 async function handleLogout() {
   try {
-    // ── CRÍTICO: detener el listener de sesión ANTES de borrar el doc ──
-    // Si no se hace, el onSnapshot detecta que el doc desapareció y muestra
-    // la pantalla "Sesión finalizada por el administrador" — que es incorrecta
-    // cuando el propio usuario está cerrando sesión voluntariamente.
+    // Persistir progreso del simulacro IAR antes de cerrar sesion
+    // (quiz_state_v3 ya esta en localStorage, solo faltan las preguntas y el flag)
+    try {
+      var rawState = localStorage.getItem('quiz_state_v3');
+      if (rawState) {
+        var allState = JSON.parse(rawState);
+        var simState = allState['simulacro_iar'];
+        if (simState && !simState.totalShown) {
+          var nG = simState.graded ? Object.keys(simState.graded).filter(function(k){ return simState.graded[k]; }).length : 0;
+          var nA = simState.answers ? Object.keys(simState.answers).filter(function(k){ var a = simState.answers[k]; return Array.isArray(a) && a.length > 0; }).length : 0;
+          if (nG > 0 || nA > 0) {
+            localStorage.setItem('simulacro_iar_tiene_progreso_v1', '1');
+            if (window._persistirPreguntasSimulacroIAREnStorage) {
+              window._persistirPreguntasSimulacroIAREnStorage();
+            } else if (window.preguntasPorSeccion && window.preguntasPorSeccion['simulacro_iar']) {
+              var items = window.preguntasPorSeccion['simulacro_iar'].map(function(p){ return { pregunta: p }; });
+              localStorage.setItem('simulacro_iar_preguntas_v1', JSON.stringify(items));
+            }
+            if (window._oavGetCurrentIdx) {
+              var oavIdx = window._oavGetCurrentIdx('simulacro_iar');
+              if (typeof oavIdx === 'number') {
+                var oavAll = JSON.parse(localStorage.getItem('oav_current_idx_v1') || '{}');
+                oavAll['simulacro_iar'] = oavIdx;
+                localStorage.setItem('oav_current_idx_v1', JSON.stringify(oavAll));
+              }
+            }
+          }
+        }
+      }
+    } catch(ePersist) {}
+
+    // -- CRITICO: detener el listener de sesion ANTES de borrar el doc --
+    // Si no se hace, el onSnapshot detecta que el doc desaparecio y muestra
+    // la pantalla "Sesion finalizada por el administrador" -- que es incorrecta
+    // cuando el propio usuario esta cerrando sesion voluntariamente.
     if (monitoreoSnapshot) { monitoreoSnapshot(); monitoreoSnapshot = null; }
     if (monitoreoInterval) { clearInterval(monitoreoInterval); monitoreoInterval = null; }
     detenerListenersActividad();
@@ -2319,6 +2356,7 @@ function limpiarUI() {
     _monitoreoUserRef._cleanupVisibility();
     _monitoreoUserRef = null;
   }
+  window._esAdmin = false;
   window._demoCheckEnabled = false;
   licenciaActual = null;
   detenerListenersActividad();
