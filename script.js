@@ -223,8 +223,6 @@ if (typeof preguntasPorSeccion === 'undefined') {
     }
     currentSection = seccionId;
     document.getElementById("menu-principal")?.classList.add("oculto");
-    // Notificar al chat que salimos del menú
-    if (typeof window.chatMostrarEnMenu === 'function') window.chatMostrarEnMenu(false);
     const _pb = document.getElementById('buscador-preguntas');
     if (_pb) _pb.classList.add('oculto');
     document.querySelectorAll(".menu-principal[id$='-submenu']").forEach(s => s.style.display = "none");
@@ -246,7 +244,9 @@ if (typeof preguntasPorSeccion === 'undefined') {
 
     // Si las preguntas ya están en memoria, generar directamente
     if (preguntasPorSeccion[seccionId]) {
-      generarCuestionario(seccionId);
+      const _cb = window._buscadorPendienteScroll || null;
+      window._buscadorPendienteScroll = null;
+      generarCuestionario(seccionId, _cb);
       if (seccionId === 'simulador') {
         const timerState = loadJSON(TIMER_STORAGE_KEY, null);
         if (timerState && timerState.startTime) iniciarTemporizador();
@@ -274,7 +274,9 @@ if (typeof preguntasPorSeccion === 'undefined') {
           console.log('[IAR DEBUG] Firestore respondió. preguntas=' + (preguntas ? preguntas.length : 'null') + ' seccion=' + seccionId);
           if (preguntas) preguntasPorSeccion[seccionId] = preguntas;
           if (currentSection === seccionId) {
-            generarCuestionario(seccionId);
+            const _cb = window._buscadorPendienteScroll || null;
+            window._buscadorPendienteScroll = null;
+            generarCuestionario(seccionId, _cb);
             if (seccionId === 'simulador') {
               const timerState = loadJSON(TIMER_STORAGE_KEY, null);
               if (timerState && timerState.startTime) iniciarTemporizador();
@@ -315,11 +317,35 @@ if (typeof preguntasPorSeccion === 'undefined') {
     }
 
     // Simulacro IAR: al salir siempre limpiar si no hay progreso real
-    // (con progreso real, inicializarSimulacroIAR lo conservará al volver)
+    // Usar _hayProgresoEnStorage porque script_onebyone.js escribe en localStorage directamente
     if (currentSection === 'simulacro_iar') {
-      if (!_tieneProgresoSimulacroIAR()) {
+      if (_hayProgresoEnStorage('simulacro_iar')) {
+        // Persistir preguntas en SIMULACRO_IAR_KEY para recuperarlas tras recarga/login
+        _persistirPreguntasSimulacroIAREnStorage();
+        _persistirIndiceOAVActual('simulacro_iar');
+        try { localStorage.setItem(SIMULACRO_IAR_PROGRESO, '1'); } catch(e) {}
+      } else {
         _limpiarSimulacroIARSinProgreso();
       }
+      // Early return — simulacro_iar no necesita el bloque general
+      currentSection = null;
+      document.querySelectorAll(".menu-principal[id$='-submenu']").forEach(s => s.style.display = "none");
+      document.querySelectorAll(".pagina-cuestionario").forEach(p => p.classList.remove("activa"));
+      const _pbSim = document.getElementById('buscador-preguntas');
+      if (_pbSim) _pbSim.classList.add('oculto');
+      const _bfSim = document.getElementById('btn-volver-buscador');
+      if (_bfSim) _bfSim.style.display = 'none';
+      try { sessionStorage.removeItem('buscador_origen'); } catch(e) {}
+      try { localStorage.removeItem('buscador_ultimo_query_v1'); } catch(e) {}
+      const _inpSim = document.getElementById('buscador-input');
+      if (_inpSim) _inpSim.value = '';
+      const _resSim = document.getElementById('buscador-resultados');
+      if (_resSim) _resSim.innerHTML = '';
+      const _stSim = document.getElementById('buscador-stats');
+      if (_stSim) _stSim.style.display = 'none';
+      document.getElementById("menu-principal")?.classList.remove("oculto");
+      restoreScrollPosition();
+      return;
     }
     
     if (currentSection && preguntasPorSeccion[currentSection]) {
@@ -353,17 +379,20 @@ if (typeof preguntasPorSeccion === 'undefined') {
           }
         }
 
-        // ¿Hay al menos una pregunta respondida?
-        const s = state[currentSection];
-        const hayRespuestas = s && s.graded && Object.keys(s.graded).some(k => s.graded[k]);
+        // IMPORTANTE: leer progreso desde localStorage, no desde state en memoria,
+        // porque script_onebyone.js escribe directamente en quiz_state_v3 sin actualizar state.
+        const hayProgreso = _hayProgresoEnStorage(currentSection);
 
-        // Si hay respuestas: conservar orden de opciones (aleatorizar=false)
-        // Si no hay respuestas: aleatorizar opciones de nuevo (aleatorizar=true)
-        limpiarSeccion(currentSection, !hayRespuestas);
-
-        console.log(hayRespuestas
-          ? '🔒 Volvió con respuestas → opciones conservadas'
-          : '🎲 Volvió sin respuestas → opciones aleatorizadas');
+        if (hayProgreso) {
+          // Sincronizar state en memoria con localStorage antes de continuar
+          _sincronizarStateDesdeStorage(currentSection);
+          // Persistir el indice OAV actual para restaurar la posicion al volver
+          _persistirIndiceOAVActual(currentSection);
+          console.log('Volvio con progreso → estado conservado');
+        } else {
+          limpiarSeccion(currentSection, true);
+          console.log('Volvio sin progreso → opciones re-aleatorizadas');
+        }
       }
     }
     
@@ -390,55 +419,114 @@ if (typeof preguntasPorSeccion === 'undefined') {
     document.getElementById("menu-principal")?.classList.remove("oculto");
 
     restoreScrollPosition();
-
-    // Notificar al chat que estamos en el menú principal
-    if (typeof window.chatMostrarEnMenu === 'function') window.chatMostrarEnMenu(true);
   }
 
   let lastShuffleTemp = {};
+
+  // ======== Helper: limpiar índice de navegación OAV del localStorage ========
+  function _limpiarOAVIdx(seccionId) {
+    try {
+      var raw = localStorage.getItem('oav_current_idx_v1');
+      if (!raw) return;
+      var all = JSON.parse(raw);
+      delete all[seccionId];
+      localStorage.setItem('oav_current_idx_v1', JSON.stringify(all));
+    } catch(e) {}
+  }
+
+
+  // ======== Helper: leer si una sección tiene progreso en localStorage ========
+  // IMPORTANTE: script_onebyone.js escribe en quiz_state_v3 directamente
+  // sin actualizar el objeto `state` en memoria. Por eso hay que leer desde localStorage.
+  function _hayProgresoEnStorage(seccionId) {
+    if (!seccionId) return false;
+    try {
+      var raw = localStorage.getItem('quiz_state_v3');
+      if (!raw) return false;
+      var all = JSON.parse(raw);
+      var s = all[seccionId];
+      if (!s || s.totalShown) return false;
+      var hayGraded = s.graded && Object.keys(s.graded).some(function(k){ return s.graded[k]; });
+      if (hayGraded) return true;
+      var hayAnswers = s.answers && Object.keys(s.answers).some(function(k){
+        var a = s.answers[k]; return Array.isArray(a) && a.length > 0;
+      });
+      return !!hayAnswers;
+    } catch(e) { return false; }
+  }
+
+  // ======== Helper: sincronizar state en memoria desde localStorage ========
+  // Necesario porque script_onebyone.js escribe en localStorage sin pasar por state en memoria.
+  function _sincronizarStateDesdeStorage(seccionId) {
+    try {
+      var raw = localStorage.getItem('quiz_state_v3');
+      if (!raw) return;
+      var all = JSON.parse(raw);
+      if (all[seccionId]) {
+        state[seccionId] = all[seccionId];
+      }
+    } catch(e) {}
+  }
+
+
+  // ======== Helper: persistir índice OAV actual en localStorage al salir con progreso ========
+  function _persistirIndiceOAVActual(seccionId) {
+    if (!seccionId) return;
+    try {
+      var idx = null;
+      if (window._oavGetCurrentIdx) {
+        idx = window._oavGetCurrentIdx(seccionId);
+      } else if (window._oavState && window._oavState[seccionId] != null) {
+        idx = window._oavState[seccionId].currentIdx;
+      }
+      if (idx == null || typeof idx !== 'number') return;
+      var all = JSON.parse(localStorage.getItem('oav_current_idx_v1') || '{}');
+      all[seccionId] = idx;
+      localStorage.setItem('oav_current_idx_v1', JSON.stringify(all));
+    } catch(e) {}
+  }
 
   // ======== Helper: limpiar sección con o sin aleatorización de opciones ========
   // aleatorizar=true  → borra shuffleMap → las opciones se re-mezclan al regenerar
   // aleatorizar=false → conserva shuffleMap → las opciones mantienen el orden previo
   function limpiarSeccion(seccionId, aleatorizar) {
     const s = state[seccionId];
+    _limpiarOAVIdx(seccionId);
 
     if (aleatorizar) {
       // Borrar completamente → nueva aleatorización de preguntas y opciones al regenerar
       delete state[seccionId];
     } else {
-      // Conservar TODO el progreso — solo congelar el shuffleMap para no re-mezclar opciones
+      // Conservar shuffleMap (orden de opciones) y unansweredOrder (orden de preguntas)
       const shuffleMapGuardado = (s && s.shuffleMap)
         ? JSON.parse(JSON.stringify(s.shuffleMap))
         : {};
+      const answeredOrderGuardado = s && s.answeredOrder ? s.answeredOrder.slice() : [];
+      const unansweredOrderGuardado = s && s.unansweredOrder ? s.unansweredOrder.slice() : [];
 
       state[seccionId] = {
         shuffleFrozen: true,
         shuffleMap: shuffleMapGuardado,
-        answeredOrder: s ? (s.answeredOrder || []) : [],
-        unansweredOrder: s ? (s.unansweredOrder || []) : [],
-        answers: s ? (s.answers || {}) : {},
-        graded: s ? (s.graded || {}) : {},
-        totalShown: s ? (s.totalShown || false) : false,
-        explanationShown: s ? (s.explanationShown || {}) : {}
+        answeredOrder: [],
+        // Restaurar todas las preguntas al orden no-respondido, preservando su secuencia
+        unansweredOrder: [...answeredOrderGuardado, ...unansweredOrderGuardado],
+        answers: {},
+        graded: {},
+        totalShown: false,
+        explanationShown: {}
       };
     }
 
     saveJSON(STORAGE_KEY, state);
 
-    // Solo resetear puntajesPorSeccion si no hay respuestas guardadas
     if (window.puntajesPorSeccion && window.puntajesPorSeccion[seccionId]) {
-      const hayGraded = state[seccionId] && Object.keys(state[seccionId].graded || {}).length > 0;
-      if (!hayGraded) {
-        window.puntajesPorSeccion[seccionId] = Array(
-          (preguntasPorSeccion[seccionId] || []).length
-        ).fill(null);
-      }
+      window.puntajesPorSeccion[seccionId] = Array(
+        (preguntasPorSeccion[seccionId] || []).length
+      ).fill(null);
     }
 
-    // Solo limpiar el resultado visual si no hay respuestas guardadas
     const resultadoTotal = document.getElementById(`resultado-total-${seccionId}`);
-    if (resultadoTotal && !Object.keys((state[seccionId] || {}).graded || {}).length) {
+    if (resultadoTotal) {
       resultadoTotal.innerHTML = "";
       resultadoTotal.className = "resultado-final";
     }
@@ -972,7 +1060,7 @@ if (typeof preguntasPorSeccion === 'undefined') {
   }
 
   // ======== Render del cuestionario ========
-  function generarCuestionario(seccionId) {
+  function generarCuestionario(seccionId, _onReady) {
     const preguntas = preguntasPorSeccion[seccionId];
     if (!preguntas) return;
 
@@ -1158,6 +1246,7 @@ if (typeof preguntasPorSeccion === 'undefined') {
       window._oavRenderOAV(seccionId);
     }
     // ────────────────────────────────────────────────────────────────────
+    if (typeof _onReady === 'function') _onReady();
   }
 
   function persistSelectionsForQuestion(seccionId, qIndex) {
@@ -1601,12 +1690,25 @@ if (typeof preguntasPorSeccion === 'undefined') {
   };
 
   function _ejecutarVolverAlSubmenu(submenuId) {
-    if (currentSection && state[currentSection] && state[currentSection].totalShown) {
+    // Simulacro IAR: tratamiento especial
+    if (currentSection === 'simulacro_iar') {
+      if (_hayProgresoEnStorage('simulacro_iar')) {
+        _persistirPreguntasSimulacroIAREnStorage();
+        _persistirIndiceOAVActual('simulacro_iar');
+        try { localStorage.setItem(SIMULACRO_IAR_PROGRESO, '1'); } catch(e) {}
+      } else {
+        _limpiarSimulacroIARSinProgreso();
+      }
+    } else if (currentSection && state[currentSection] && state[currentSection].totalShown) {
       limpiarSeccion(currentSection, true);
-    } else if (currentSection && state[currentSection] && !state[currentSection].totalShown) {
-      const s = state[currentSection];
-      const hayRespuestas = s && s.graded && Object.keys(s.graded).some(k => s.graded[k]);
-      limpiarSeccion(currentSection, !hayRespuestas);
+    } else if (currentSection) {
+      // Para secciones normales: leer progreso desde localStorage
+      if (!_hayProgresoEnStorage(currentSection)) {
+        limpiarSeccion(currentSection, true);
+      } else {
+        _sincronizarStateDesdeStorage(currentSection);
+        _persistirIndiceOAVActual(currentSection);
+      }
     }
 
     const seccionOrigen = currentSection;
@@ -2120,42 +2222,55 @@ if (typeof preguntasPorSeccion === 'undefined') {
   const _origShowMenu = showMenu;
   // (hook will be applied after DOMContentLoaded)
 
-  // ======== "Ver mi progreso" — panel popup + botones inline junto a Reiniciar ========
+  // ======== Botón flotante "Ver mi progreso" ========
   function buildProgressUI() {
-    // Crear el panel popup (sin botón flotante global)
+    const btn = document.createElement("button");
+    btn.id = "btn-ver-progreso";
+    btn.textContent = "Ver mi progreso";
+    btn.style.position = "fixed";
+    btn.style.right = "16px";
+    btn.style.bottom = "16px";
+    btn.style.zIndex = "1000";
+    btn.style.padding = "10px 14px";
+    btn.style.border = "none";
+    btn.style.borderRadius = "999px";
+    btn.style.boxShadow = "0 4px 12px rgba(0,0,0,.15)";
+    btn.style.cursor = "pointer";
+    btn.style.fontWeight = "bold";
+    btn.style.background = "#2ecc71";
+    btn.style.color = "#fff";
+    document.body.appendChild(btn);
+
     const panel = document.createElement("div");
     panel.id = "panel-progreso";
     panel.style.position = "fixed";
-    panel.style.top = "50%";
-    panel.style.left = "50%";
-    panel.style.transform = "translate(-50%, -50%)";
-    panel.style.width = "360px";
+    panel.style.right = "16px";
+    panel.style.bottom = "70px";
+    panel.style.width = "320px";
     panel.style.maxWidth = "92vw";
-    panel.style.maxHeight = "70vh";
+    panel.style.maxHeight = "60vh";
     panel.style.overflow = "auto";
     panel.style.background = "#fff";
     panel.style.border = "1px solid #dee2e6";
     panel.style.borderRadius = "12px";
-    panel.style.boxShadow = "0 8px 32px rgba(0,0,0,.28)";
-    panel.style.padding = "16px";
+    panel.style.boxShadow = "0 8px 24px rgba(0,0,0,.2)";
+    panel.style.padding = "12px";
     panel.style.display = "none";
-    panel.style.zIndex = "10001";
+    panel.style.zIndex = "1001";
 
     const header = document.createElement("div");
     header.style.display = "flex";
     header.style.justifyContent = "space-between";
     header.style.alignItems = "center";
-    header.style.marginBottom = "8px";
     const title = document.createElement("strong");
-    title.textContent = "📊 Historial de intentos";
+    title.textContent = "Historial de intentos";
     const close = document.createElement("button");
-    close.textContent = "✕ Cerrar";
+    close.textContent = "Cerrar";
     close.style.border = "none";
     close.style.background = "#e0e0e0";
     close.style.borderRadius = "8px";
     close.style.padding = "6px 10px";
     close.style.cursor = "pointer";
-    close.style.fontWeight = "600";
     header.appendChild(title);
     header.appendChild(close);
 
@@ -2168,35 +2283,15 @@ if (typeof preguntasPorSeccion === 'undefined') {
     panel.appendChild(content);
     document.body.appendChild(panel);
 
-    // Overlay de fondo para cerrar al hacer click afuera
-    const overlay = document.createElement("div");
-    overlay.id = "panel-progreso-overlay";
-    overlay.style.cssText = "display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.35);z-index:10000;";
-    document.body.appendChild(overlay);
-
-    const cerrarPanel = () => {
-      panel.style.display = "none";
-      overlay.style.display = "none";
-    };
-
-    close.addEventListener("click", cerrarPanel);
-    overlay.addEventListener("click", cerrarPanel);
-
-    // Función global para abrir el panel desde cualquier botón inline
-    window.abrirProgreso = function() {
-      renderProgress(content);
-      overlay.style.display = "block";
-      panel.style.display = "block";
-    };
-
-    // Inyectar botón "📊 Mi progreso" junto a cada btn-reiniciar (una sola vez al cargar)
-    document.querySelectorAll(".btn-reiniciar").forEach(btnReiniciar => {
-      const btnProg = document.createElement("button");
-      btnProg.className = "btn-reiniciar btn-progreso-inline";
-      btnProg.textContent = "📊 Mi progreso";
-      btnProg.onclick = window.abrirProgreso;
-      btnReiniciar.insertAdjacentElement("afterend", btnProg);
+    btn.addEventListener("click", () => {
+      if (panel.style.display === "block") {
+        panel.style.display = "none";
+      } else {
+        renderProgress(content);
+        panel.style.display = "block";
+      }
     });
+    close.addEventListener("click", () => (panel.style.display = "none"));
   }
 
   function renderProgress(container) {
@@ -2461,12 +2556,10 @@ if (typeof preguntasPorSeccion === 'undefined') {
   };
   
   function ejecutarCrearNuevoSimulacro() {
-    // Reiniciar el temporizador
     reiniciarTemporizador();
-    
-    // Limpiar el estado del simulacro actual
     delete state['simulador'];
     saveJSON(STORAGE_KEY, state);
+    _limpiarOAVIdx('simulador');
     
     // Limpiar las preguntas guardadas en localStorage
     localStorage.removeItem(SIMULACRO_STORAGE_KEY);
@@ -2514,12 +2607,10 @@ if (typeof preguntasPorSeccion === 'undefined') {
   };
   
   function ejecutarRepetirSimulacro() {
-    // Reiniciar el temporizador
     reiniciarTemporizador();
-    
-    // Limpiar el estado del simulacro actual pero mantener las preguntas
     delete state['simulador'];
     saveJSON(STORAGE_KEY, state);
+    _limpiarOAVIdx('simulador');
     
     // Limpiar puntajes
     if (window.puntajesPorSeccion && window.puntajesPorSeccion['simulador']) {
@@ -2560,11 +2651,8 @@ if (typeof preguntasPorSeccion === 'undefined') {
   ];
 
   function _tieneProgresoSimulacroIAR() {
-    // Hay progreso real si hay ≥1 respuesta calificada Y no se completó (totalShown)
-    var s = state['simulacro_iar'];
-    if (!s || !s.graded) return false;
-    var nResp = Object.keys(s.graded).filter(function(k) { return s.graded[k]; }).length;
-    return nResp > 0 && !s.totalShown;
+    // Leer desde localStorage (fuente de verdad: script_onebyone.js escribe ahí directamente)
+    return _hayProgresoEnStorage('simulacro_iar');
   }
 
   function generarNuevasPreguntasSimulacroIAR() {
@@ -2596,54 +2684,163 @@ if (typeof preguntasPorSeccion === 'undefined') {
       }
     });
 
-    // Ordenar cada grupo internamente
+    // Ordenar cada grupo internamente: por ordenEnGrupo (si existe), luego por índice original
     Object.keys(unidadesMap).forEach(function(gid) {
       unidadesMap[gid].sort(function(a, b) {
-        return (a.pregunta.ordenEnGrupo || 0) - (b.pregunta.ordenEnGrupo || 0);
+        var oa = (a.pregunta.ordenEnGrupo != null) ? Number(a.pregunta.ordenEnGrupo) : a.idx;
+        var ob = (b.pregunta.ordenEnGrupo != null) ? Number(b.pregunta.ordenEnGrupo) : b.idx;
+        if (oa !== ob) return oa - ob;
+        return a.idx - b.idx; // desempate por índice original en la sección
       });
     });
 
     var unidadesGrupo = Object.values(unidadesMap);
 
+    // Validar integridad de grupos: descartar grupos incompletos (faltan preguntas en Firestore)
+    unidadesGrupo = unidadesGrupo.filter(function(grupo) {
+      var esperadas = grupo[0] && grupo[0].pregunta.totalEnGrupo ? Number(grupo[0].pregunta.totalEnGrupo) : grupo.length;
+      var completo = grupo.length === esperadas;
+      if (!completo) {
+        console.warn('[SimulacroIAR] Grupo incompleto descartado: ' + (grupo[0] && grupo[0].pregunta.grupoId) +
+          ' — tiene ' + grupo.length + '/' + esperadas + ' preguntas');
+      }
+      return completo;
+    });
+
     // Mezclar independientes y elegir exactamente 1 grupo (si cabe)
     var sueltas = shuffle(unidadesSueltas, 'sim-sueltas-' + Date.now());
     var grupos  = shuffle(unidadesGrupo,  'sim-grupos-'  + Date.now());
 
-    var seleccionadas = [];
-    var grupoUsado = false;
-
-    // Añadir 1 grupo si tiene ≤6 preguntas (para no pasarse de TARGET)
-    if (grupos.length > 0 && grupos[0].length <= 6) {
-      grupos[0].forEach(function(item) { seleccionadas.push(item); });
-      grupoUsado = true;
+    // Primero elegir las preguntas sueltas que vamos a usar
+    var grupoElegido = null;
+    var cantGrupo = 0;
+    if (grupos.length > 0 && grupos[0].length <= TARGET - 1) {
+      grupoElegido = grupos[0]; // ya está ordenado internamente por ordenEnGrupo
+      cantGrupo = grupoElegido.length;
+      console.log('[SimulacroIAR] Grupo elegido: ' + grupoElegido[0].pregunta.grupoId +
+        ' (' + cantGrupo + ' preguntas, ordenadas por ordenEnGrupo: ' +
+        grupoElegido.map(function(g){ return g.pregunta.ordenEnGrupo; }).join('→') + ')');
     }
 
-    // Completar con preguntas sueltas hasta TARGET
-    for (var i = 0; i < sueltas.length && seleccionadas.length < TARGET; i++) {
-      seleccionadas.push(sueltas[i][0]);
+    // Tomar las sueltas necesarias para llegar a TARGET
+    var sueltasElegidas = [];
+    for (var i = 0; i < sueltas.length && sueltasElegidas.length < TARGET - cantGrupo; i++) {
+      sueltasElegidas.push(sueltas[i][0]);
     }
+
+    // Insertar el bloque del grupo en una posición aleatoria dentro de las sueltas
+    // El bloque siempre es contiguo y en el orden correcto (ordenEnGrupo 1→2→3→4)
+    var seleccionadas = sueltasElegidas.slice();
+    if (grupoElegido) {
+      // Posición aleatoria: entre 0 y sueltasElegidas.length (inclusive)
+      var posInsercion = Math.floor(Math.random() * (sueltasElegidas.length + 1));
+      // Insertar de adelante hacia atrás para mantener el orden correcto del grupo
+      for (var j = grupoElegido.length - 1; j >= 0; j--) {
+        seleccionadas.splice(posInsercion, 0, grupoElegido[j]);
+      }
+      console.log('[SimulacroIAR] Bloque del grupo insertado en posición ' + posInsercion +
+        ' (preguntas ' + (posInsercion+1) + '–' + (posInsercion+cantGrupo) + ' del simulacro)');
+    }
+
+    var grupoUsado = grupoElegido !== null;
 
     console.log('[SimulacroIAR] Generado: ' + seleccionadas.length + ' preguntas (grupo=' + grupoUsado + ')');
     localStorage.setItem(SIMULACRO_IAR_KEY, JSON.stringify(seleccionadas));
     return seleccionadas;
   }
 
+  function _persistirPreguntasSimulacroIAREnStorage() {
+    try {
+      var pregs = preguntasPorSeccion['simulacro_iar'];
+      if (!pregs || pregs.length === 0) return;
+      var items = pregs.map(function(p) { return { pregunta: p }; });
+      localStorage.setItem(SIMULACRO_IAR_KEY, JSON.stringify(items));
+    } catch(e) {}
+  }
+
   function _limpiarSimulacroIARSinProgreso() {
-    // Borra preguntas guardadas y estado para forzar nuevo simulacro
     localStorage.removeItem(SIMULACRO_IAR_KEY);
+    try { localStorage.removeItem(SIMULACRO_IAR_PROGRESO); } catch(e) {}
     delete state['simulacro_iar'];
     saveJSON(STORAGE_KEY, state);
     if (window.puntajesPorSeccion) delete window.puntajesPorSeccion['simulacro_iar'];
     delete preguntasPorSeccion['simulacro_iar'];
+    _limpiarOAVIdx('simulacro_iar');
     var rt = document.getElementById('resultado-total-simulacro_iar');
     if (rt) { rt.textContent = ''; rt.className = 'resultado-final'; }
   }
 
+  // Carga secciones desde Firestore para recuperar preguntas del simulacro en progreso
+  // (caso: usuario tenía progreso pero recargó la página y la memoria se perdió)
+  function _cargarConProgresoDesdeFirestore() {
+    var cont = document.getElementById('cuestionario-simulacro_iar');
+    if (cont) {
+      cont.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#64748b;">' +
+        '<div style="font-size:2rem;margin-bottom:12px;">⏳</div>' +
+        '<div style="font-size:1rem;font-weight:600;">Recuperando tu progreso...</div>' +
+        '<div style="font-size:.85rem;margin-top:8px;color:#94a3b8;">Un momento...</div>' +
+        '</div>';
+    }
+    var seccionesFaltantes = SECCIONES_IAR_SIMULACRO.filter(function(sec) {
+      return !Array.isArray(preguntasPorSeccion[sec]) || preguntasPorSeccion[sec].length === 0;
+    });
+    function _esperar(intentos) {
+      if (!window.cargarSeccionFirestore) {
+        if (intentos < 30) { setTimeout(function() { _esperar(intentos + 1); }, 200); }
+        return;
+      }
+      var promesas = seccionesFaltantes.map(function(sec) {
+        return window.cargarSeccionFirestore(sec).then(function(pregs) {
+          if (pregs && pregs.length > 0) preguntasPorSeccion[sec] = pregs;
+        }).catch(function() {});
+      });
+      Promise.all(promesas).then(function() {
+        if (currentSection !== 'simulacro_iar') return;
+        // Ahora intentar recuperar las preguntas guardadas en SIMULACRO_IAR_KEY
+        var guardadas = loadJSON(SIMULACRO_IAR_KEY, null);
+        if (guardadas && guardadas.length > 0) {
+          preguntasPorSeccion['simulacro_iar'] = guardadas.map(function(i) { return i.pregunta; });
+          generarCuestionario('simulacro_iar');
+        } else {
+          // Fallback: generar nuevo (no deberíamos llegar aquí)
+          var items = generarNuevasPreguntasSimulacroIAR();
+          if (items && items.length > 0) {
+            preguntasPorSeccion['simulacro_iar'] = items.map(function(i) { return i.pregunta; });
+            generarCuestionario('simulacro_iar');
+          }
+        }
+      });
+    }
+    _esperar(0);
+  }
+
+  // Exponer para firebase-auth.js (logout) y otros modulos externos
+  window._tieneProgresoSimulacroIARPublic = _tieneProgresoSimulacroIAR;
+  window._persistirPreguntasSimulacroIAREnStorage = _persistirPreguntasSimulacroIAREnStorage;
+
   window.inicializarSimulacroIAR = function() {
     // Progreso real = respondió ≥1 pregunta Y no terminó (totalShown)
-    if (_tieneProgresoSimulacroIAR() && preguntasPorSeccion['simulacro_iar'] && preguntasPorSeccion['simulacro_iar'].length > 0) {
-      console.log('[SimulacroIAR] Progreso detectado → conservando y mostrando');
-      generarCuestionario('simulacro_iar');
+    if (_tieneProgresoSimulacroIAR()) {
+      // Intentar recuperar preguntas desde memoria primero
+      if (preguntasPorSeccion['simulacro_iar'] && preguntasPorSeccion['simulacro_iar'].length > 0) {
+        console.log('[SimulacroIAR] Progreso detectado (memoria) → conservando y mostrando');
+        generarCuestionario('simulacro_iar');
+        return;
+      }
+      // Si la memoria está vacía (ej: recarga de página), recuperar desde localStorage
+      var guardadas = loadJSON(SIMULACRO_IAR_KEY, null);
+      if (guardadas && guardadas.length > 0) {
+        console.log('[SimulacroIAR] Progreso detectado (localStorage) → recuperando ' + guardadas.length + ' preguntas');
+        preguntasPorSeccion['simulacro_iar'] = guardadas.map(function(i) { return i.pregunta; });
+        generarCuestionario('simulacro_iar');
+        return;
+      }
+      // Si tampoco hay en localStorage, necesitamos recargar desde Firestore
+      // para poder mostrar las preguntas con el progreso guardado
+      console.log('[SimulacroIAR] Progreso detectado pero sin preguntas en cache → recargando desde Firestore');
+      // Continúa al flujo de carga desde Firestore (no hace return)
+      // pero SIN limpiar el progreso (_limpiarSimulacroIARSinProgreso NO se llama aquí)
+      _cargarConProgresoDesdeFirestore();
       return;
     }
 
@@ -2723,12 +2920,30 @@ if (typeof preguntasPorSeccion === 'undefined') {
       '¿Reiniciar el cuestionario IAR?',
       'Se reiniciará el examen con las mismas preguntas. Si salís sin responder nada, se generará un nuevo simulacro. ¿Continuás?',
       function() {
-        // Limpiar estado y preguntas completamente — sin respuestas = sin progreso
-        _limpiarSimulacroIARSinProgreso();
-        // Regenerar con las mismas preguntas que ya estaban en memoria
-        var items = generarNuevasPreguntasSimulacroIAR();
-        if (items && items.length > 0) {
-          preguntasPorSeccion['simulacro_iar'] = items.map(function(i) { return i.pregunta; });
+        // Guardar las preguntas actuales ANTES de limpiar el estado
+        var preguntasActuales = preguntasPorSeccion['simulacro_iar']
+          ? preguntasPorSeccion['simulacro_iar'].slice()
+          : null;
+
+        // Limpiar solo el estado de progreso (respuestas, calificaciones) — SIN borrar las preguntas del localStorage
+        delete state['simulacro_iar'];
+        saveJSON(STORAGE_KEY, state);
+        if (window.puntajesPorSeccion) delete window.puntajesPorSeccion['simulacro_iar'];
+        var rt = document.getElementById('resultado-total-simulacro_iar');
+        if (rt) { rt.textContent = ''; rt.className = 'resultado-final'; }
+
+        // Restaurar las MISMAS preguntas (no generar nuevas)
+        if (preguntasActuales && preguntasActuales.length > 0) {
+          preguntasPorSeccion['simulacro_iar'] = preguntasActuales;
+          // Actualizar SIMULACRO_IAR_KEY para que al volver sin responder nada se detecte sin progreso
+          // pero se conserven las preguntas para el caso en que hay progreso y se recarga
+          // (Nota: el estado fue limpiado, así que _tieneProgresoSimulacroIAR() = false → nuevo simulacro al salir)
+        } else {
+          // Fallback: si por algún motivo no hay preguntas en memoria, generar nuevas
+          var items = generarNuevasPreguntasSimulacroIAR();
+          if (items && items.length > 0) {
+            preguntasPorSeccion['simulacro_iar'] = items.map(function(i) { return i.pregunta; });
+          }
         }
         generarCuestionario('simulacro_iar');
         window.scrollTo(0, 0);
@@ -2764,12 +2979,19 @@ if (typeof preguntasPorSeccion === 'undefined') {
         };
         document.getElementById('sim-dlg-reiniciar').onclick = function() {
           dlg.remove();
+          // Guardar las preguntas actuales ANTES de limpiar el estado
+          var preguntasActuales = preguntasPorSeccion['simulacro_iar']
+            ? preguntasPorSeccion['simulacro_iar'].slice()
+            : null;
           delete state['simulacro_iar'];
           saveJSON(STORAGE_KEY, state);
           if (window.puntajesPorSeccion) delete window.puntajesPorSeccion['simulacro_iar'];
-          localStorage.removeItem(SIMULACRO_IAR_KEY);
           var rt = document.getElementById('resultado-total-simulacro_iar');
           if (rt) { rt.textContent = ''; rt.className = 'resultado-final'; }
+          // Restaurar las MISMAS preguntas
+          if (preguntasActuales && preguntasActuales.length > 0) {
+            preguntasPorSeccion['simulacro_iar'] = preguntasActuales;
+          }
           generarCuestionario('simulacro_iar');
           window.scrollTo(0, 0);
         };
@@ -3199,48 +3421,55 @@ if (typeof preguntasPorSeccion === 'undefined') {
             el.classList.add('buscador-card-visitada');
         });
 
+        // Capturar query antes de navegar
+        var queryActual = '';
+        try { queryActual = localStorage.getItem(BUSCADOR_KEY) || ''; } catch(e) {}
+        var inputEl = document.getElementById('buscador-input');
+        if (inputEl && inputEl.value.trim().length >= 2) queryActual = inputEl.value.trim();
+
+        // Indicar al modo OAV (una-por-una) qué pregunta mostrar y cuál es el query
+        // script_onebyone.js lee esto en renderOAV() antes de decidir currentIdx
+        window._buscadorTargetIdx = originalIdx;
+        window._buscadorQueryPendiente = queryActual;
+
+        // Callback para modo TODO-A-LA-VEZ: se ejecuta cuando generarCuestionario termina
+        // En modo OAV este callback no se llama (renderOAV usa _buscadorTargetIdx directamente)
+        function _scrollAPregunta() {
+            var bloque = document.getElementById('pregunta-bloque-' + seccionId + '-' + originalIdx);
+            if (!bloque) {
+                // Modo OAV: la pregunta se muestra directamente, hacer scroll al tope
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+            // Modo todo-a-la-vez: scroll a la pregunta exacta con resaltado
+            requestAnimationFrame(function() {
+                bloque.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                bloque.classList.add('buscador-highlight');
+                _resaltarTextoBuscado(bloque, queryActual);
+                setTimeout(function () { bloque.classList.remove('buscador-highlight'); }, 2500);
+            });
+        }
+
+        // Depositar callback ANTES de llamar showSection
+        window._buscadorPendienteScroll = _scrollAPregunta;
+
         // Usar showSection del sistema original (maneja currentSection y generarCuestionario)
         if (typeof showSection === 'function') {
             showSection(seccionId);
         } else {
             // Fallback manual
+            window._buscadorPendienteScroll = null;
+            window._buscadorTargetIdx = null;
             ocultarTodo();
             var pagina = document.getElementById(seccionId);
             if (!pagina) return;
             pagina.classList.add('activa');
-            if (typeof generarCuestionario === 'function') generarCuestionario(seccionId);
+            if (typeof generarCuestionario === 'function') generarCuestionario(seccionId, _scrollAPregunta);
         }
 
         // Mostrar botón flotante
         var btn = document.getElementById('btn-volver-buscador');
         if (btn) btn.style.display = 'flex';
-
-        // Scroll + resaltado a la pregunta específica
-        // Usar 800ms para dar tiempo al cuestionario a renderizarse completamente
-        var queryActual = '';
-        try { queryActual = localStorage.getItem(BUSCADOR_KEY) || ''; } catch(e) {}
-        var inputEl = document.getElementById('buscador-input');
-        if (inputEl && inputEl.value.trim().length >= 2) queryActual = inputEl.value.trim();
-        setTimeout(function () {
-            var bloque = document.getElementById('pregunta-bloque-' + seccionId + '-' + originalIdx);
-            if (bloque) {
-                bloque.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                bloque.classList.add('buscador-highlight');
-                _resaltarTextoBuscado(bloque, queryActual);
-                setTimeout(function () { bloque.classList.remove('buscador-highlight'); }, 2500);
-            } else {
-                // Si aún no está disponible, intentar una vez más con más delay
-                setTimeout(function() {
-                    var bloque2 = document.getElementById('pregunta-bloque-' + seccionId + '-' + originalIdx);
-                    if (bloque2) {
-                        bloque2.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        bloque2.classList.add('buscador-highlight');
-                        _resaltarTextoBuscado(bloque2, queryActual);
-                        setTimeout(function () { bloque2.classList.remove('buscador-highlight'); }, 2500);
-                    }
-                }, 600);
-            }
-        }, 800);
     };
 
     // ── Resaltar texto buscado en amarillo dentro del bloque ──
