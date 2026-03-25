@@ -516,7 +516,35 @@
      ESTADO
   ───────────────────────────────────────────────────────── */
   const oavState = {};
+  window.oavState = oavState;
+  window._oavGetCurrentIdx = function(seccionId) {
+    if (!oavState[seccionId]) return null;
+    var idx = oavState[seccionId].currentIdx;
+    return (typeof idx === 'number') ? idx : null;
+  };
   const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const OAV_NAV_KEY = 'oav_current_idx_v1';
+
+  function _saveCurrentIdx(seccionId, idx) {
+    try {
+      const all = JSON.parse(localStorage.getItem(OAV_NAV_KEY) || '{}');
+      all[seccionId] = idx;
+      localStorage.setItem(OAV_NAV_KEY, JSON.stringify(all));
+    } catch(e) {}
+  }
+  function _loadCurrentIdx(seccionId) {
+    try {
+      const all = JSON.parse(localStorage.getItem(OAV_NAV_KEY) || '{}');
+      return typeof all[seccionId] === 'number' ? all[seccionId] : null;
+    } catch(e) { return null; }
+  }
+  function _clearCurrentIdx(seccionId) {
+    try {
+      const all = JSON.parse(localStorage.getItem(OAV_NAV_KEY) || '{}');
+      delete all[seccionId];
+      localStorage.setItem(OAV_NAV_KEY, JSON.stringify(all));
+    } catch(e) {}
+  }
 
   /* ─────────────────────────────────────────────────────────
      HELPERS
@@ -537,10 +565,37 @@
   }
 
   function getScores(seccionId) {
+    // Si ya hay puntajes en memoria para esta sección, usarlos
     if (window.puntajesPorSeccion && window.puntajesPorSeccion[seccionId]) {
-      return window.puntajesPorSeccion[seccionId];
+      const scores = window.puntajesPorSeccion[seccionId];
+      // Verificar que no son todos null (memoria vacía tras recarga)
+      const tieneAlgo = scores.some(v => v !== null && v !== undefined);
+      if (tieneAlgo) return scores;
     }
-    return [];
+
+    // Memoria vacía o sin datos → reconstruir desde localStorage
+    const preguntas = window.preguntasPorSeccion && window.preguntasPorSeccion[seccionId];
+    if (!preguntas || preguntas.length === 0) return [];
+
+    const s = getQuizState(seccionId);
+    if (!s || !s.graded || !s.shuffleMap) return Array(preguntas.length).fill(null);
+
+    // Reconstruir puntaje para cada pregunta calificada
+    const scores = Array(preguntas.length).fill(null);
+    preguntas.forEach(function(preg, idx) {
+      if (!s.graded[idx]) return;
+      const inv = s.shuffleMap[idx];
+      if (!inv) return;
+      const guardadas = (s.answers && s.answers[idx]) || [];
+      const selOriginal = guardadas.map(function(mi) { return inv[mi]; }).sort(function(a,b){return a-b;});
+      const correctaOriginal = preg.correcta.slice().sort(function(a,b){return a-b;});
+      scores[idx] = JSON.stringify(selOriginal) === JSON.stringify(correctaOriginal) ? 1 : 0;
+    });
+
+    // Guardar en memoria para no tener que recalcular
+    if (!window.puntajesPorSeccion) window.puntajesPorSeccion = {};
+    window.puntajesPorSeccion[seccionId] = scores;
+    return scores;
   }
 
   function getQuestionStatus(seccionId, idx) {
@@ -550,6 +605,7 @@
   }
 
   function getShuffledOptions(seccionId, idx, opciones) {
+    // 1) Leer shuffleMap ya guardado (congelado desde una interacción previa)
     const s = getQuizState(seccionId);
     if (s && s.shuffleMap && s.shuffleMap[idx]) {
       const inv = s.shuffleMap[idx];
@@ -557,7 +613,43 @@
         text: opciones[inv[k]], originalIndex: inv[k], mixedIndex: +k
       }));
     }
-    return opciones.map((t, i) => ({ text: t, originalIndex: i, mixedIndex: i }));
+
+    // 2) No hay shuffleMap → generar mezcla aleatoria y persistirla YA
+    var indices = opciones.map(function(_, i) { return i; });
+    // Seed basado en tiempo → cada entrada al cuestionario mezcla distinto
+    var seed = (Date.now() + idx * 7919) >>> 0;
+    function rng() {
+      seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5;
+      return (seed >>> 0) / 0xFFFFFFFF;
+    }
+    for (var i = indices.length - 1; i > 0; i--) {
+      var j = Math.floor(rng() * (i + 1));
+      var tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
+    }
+
+    // inv: mixedIdx → originalIdx
+    var inv = {};
+    indices.forEach(function(origIdx, mixedIdx) { inv[mixedIdx] = origIdx; });
+
+    // Guardar en localStorage quiz_state_v3 para que quede congelado
+    try {
+      var raw = localStorage.getItem('quiz_state_v3');
+      var all = JSON.parse(raw || '{}');
+      if (!all[seccionId]) {
+        all[seccionId] = { shuffleFrozen: false, shuffleMap: {}, answeredOrder: [], unansweredOrder: [], answers: {}, graded: {}, totalShown: false, explanationShown: {} };
+      }
+      if (!all[seccionId].shuffleMap) all[seccionId].shuffleMap = {};
+      // Solo guardar si todavía no está (evitar pisar uno ya congelado)
+      if (!all[seccionId].shuffleMap[idx]) {
+        all[seccionId].shuffleMap[idx] = inv;
+        all[seccionId].shuffleFrozen = true;
+        localStorage.setItem('quiz_state_v3', JSON.stringify(all));
+      }
+    } catch(e) {}
+
+    return indices.map(function(origIdx, mixedIdx) {
+      return { text: opciones[origIdx], originalIndex: origIdx, mixedIndex: mixedIdx };
+    });
   }
 
   function getRestoredAnswers(seccionId, idx) {
@@ -583,36 +675,46 @@
     const cont = document.getElementById('cuestionario-' + seccionId);
     if (!cont) return;
 
-    // Inicializar estado OAV
     if (!oavState[seccionId]) {
       oavState[seccionId] = { currentIdx: 0, total: preguntas.length };
     } else {
       oavState[seccionId].total = preguntas.length;
     }
 
-    // Posicionar en la primera sin responder
     const scores = getScores(seccionId);
     const allAnswered = scores.length === preguntas.length && scores.every(v => v !== null && v !== undefined);
-    if (!allAnswered) {
-      const firstUnanswered = preguntas.findIndex((_, i) => {
-        const v = scores[i];
-        return v === null || v === undefined;
-      });
-      if (firstUnanswered >= 0) {
-        oavState[seccionId].currentIdx = firstUnanswered;
+
+    // Prioridad 1: buscador
+    if (typeof window._buscadorTargetIdx === 'number' && window._buscadorTargetIdx >= 0) {
+      oavState[seccionId].currentIdx = window._buscadorTargetIdx;
+      window._buscadorTargetIdx = null;
+      _clearCurrentIdx(seccionId);
+    }
+    // Prioridad 2: índice guardado en localStorage (el usuario navegó y salió)
+    else if (!allAnswered) {
+      const savedIdx = _loadCurrentIdx(seccionId);
+      if (savedIdx !== null && savedIdx >= 0 && savedIdx < preguntas.length) {
+        oavState[seccionId].currentIdx = savedIdx;
+      } else {
+        // Primera vez: ir a la primera sin calificar
+        const firstUnanswered = preguntas.findIndex((_, i) => {
+          const v = scores[i]; return v === null || v === undefined;
+        });
+        if (firstUnanswered >= 0) oavState[seccionId].currentIdx = firstUnanswered;
       }
     } else {
       oavState[seccionId].currentIdx = 0;
+      _clearCurrentIdx(seccionId);
     }
 
-    // Crear wrapper
     cont.innerHTML = '';
     const wrapper = document.createElement('div');
     wrapper.className = 'oav-wrapper';
     wrapper.id = 'oav-wrapper-' + seccionId;
     cont.appendChild(wrapper);
 
-    if (allAnswered) {
+    const _desdeBuscador = typeof window._buscadorQueryPendiente === 'string';
+    if (allAnswered && !_desdeBuscador) {
       _mostrarResultadoFinalOAV(seccionId);
     } else {
       renderOAVPage(seccionId);
@@ -802,6 +904,17 @@
         });
       });
     }
+
+    /* ── Resaltado de texto buscado (si viene del buscador) ── */
+    if (window._buscadorQueryPendiente) {
+      var query = window._buscadorQueryPendiente;
+      window._buscadorQueryPendiente = null;
+      requestAnimationFrame(function() {
+        _resaltarTextoBuscadoOAV(wrapper, query);
+        wrapper.classList.add('buscador-highlight');
+        setTimeout(function() { wrapper.classList.remove('buscador-highlight'); }, 2500);
+      });
+    }
   }
 
   /* ─────────────────────────────────────────────────────────
@@ -811,7 +924,10 @@
     try {
       const raw = localStorage.getItem('quiz_state_v3');
       const all = JSON.parse(raw || '{}');
-      if (!all[seccionId]) return;
+      // Crear estado mínimo si no existe — no descartar la selección silenciosamente
+      if (!all[seccionId]) {
+        all[seccionId] = { shuffleFrozen: false, shuffleMap: {}, answeredOrder: [], unansweredOrder: [], answers: {}, graded: {}, totalShown: false, explanationShown: {} };
+      }
       const inputs = Array.from(document.getElementsByName('pregunta' + seccionId + qIndex));
       const sel = inputs.map((inp, i) => inp.checked ? i : null).filter(v => v !== null);
       if (!all[seccionId].answers) all[seccionId].answers = {};
@@ -829,6 +945,7 @@
     const total = (window.preguntasPorSeccion[seccionId] || []).length;
     if (idx < 0 || idx >= total) return;
     st.currentIdx = idx;
+    _saveCurrentIdx(seccionId, idx);
     renderOAVPage(seccionId);
     const cont = document.getElementById('cuestionario-' + seccionId);
     if (cont) cont.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -894,12 +1011,18 @@
         }
       }
 
+      // Guardar posición actual
+      if (oavState[seccionId]) {
+        _saveCurrentIdx(seccionId, oavState[seccionId].currentIdx);
+      }
+
       // Re-render la tarjeta actual
       renderOAVPage(seccionId);
 
       // Verificar si todas están respondidas
       const allAnswered = window.puntajesPorSeccion[seccionId].every(v => v !== null && v !== undefined);
       if (allAnswered && !all[seccionId].totalShown) {
+        _clearCurrentIdx(seccionId);
         setTimeout(() => _mostrarResultadoFinalOAV(seccionId), 600);
       }
 
@@ -927,6 +1050,7 @@
   };
 
   window._oavReiniciar = function (seccionId) {
+    _clearCurrentIdx(seccionId);
     if (typeof window.reiniciarExamen === 'function') {
       window.reiniciarExamen(seccionId);
     } else {
@@ -1033,6 +1157,35 @@
   // Exponer funciones para script.js y para debug
   window._oavRenderOAV = renderOAV;
   window._oavState     = oavState;
+
+  /* ── Resaltar texto buscado dentro del wrapper OAV ── */
+  function _resaltarTextoBuscadoOAV(container, query) {
+    if (!query || query.length < 2) return;
+    var queryLower = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    var nodos = [];
+    var node;
+    while ((node = walker.nextNode())) nodos.push(node);
+    nodos.forEach(function(textNode) {
+      var text = textNode.textContent;
+      var textNorm = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      var idx = textNorm.indexOf(queryLower);
+      if (idx === -1) return;
+      var frag = document.createDocumentFragment();
+      var lastIdx = 0;
+      while (idx !== -1) {
+        frag.appendChild(document.createTextNode(text.substring(lastIdx, idx)));
+        var mark = document.createElement('mark');
+        mark.className = 'buscador-texto-highlight';
+        mark.textContent = text.substring(idx, idx + queryLower.length);
+        frag.appendChild(mark);
+        lastIdx = idx + queryLower.length;
+        idx = textNorm.indexOf(queryLower, lastIdx);
+      }
+      frag.appendChild(document.createTextNode(text.substring(lastIdx)));
+      textNode.parentNode.replaceChild(frag, textNode);
+    });
+  }
 
   console.log('[OAV] ✅ Modo una-pregunta-por-vez listo.');
 
