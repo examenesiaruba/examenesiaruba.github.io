@@ -2520,6 +2520,18 @@ function iniciarChat(email, esDemo) {
   _inyectarBotonChat();
 }
 
+function _actualizarVisibilidadChat() {
+  const hash = window.location.hash;
+  const enMenu = hash === '' || hash === '#' || hash === '#menu';
+  const btn = document.getElementById('btn-chat-flotante');
+  const ventana = document.getElementById('chat-ventana');
+  if (btn) btn.style.display = enMenu ? '' : 'none';
+  if (!enMenu && ventana) {
+    ventana.classList.remove('chat-visible');
+    if (btn) { btn.classList.remove('chat-abierto'); btn.innerHTML = '💬'; }
+  }
+}
+
 function _inyectarBotonChat() {
   if (document.getElementById('btn-chat-flotante')) return;
 
@@ -2531,6 +2543,10 @@ function _inyectarBotonChat() {
   btn.setAttribute('aria-label', 'Abrir chat');
   btn.addEventListener('click', () => _toggleChat());
   document.body.appendChild(btn);
+
+  // Controlar visibilidad según la página actual
+  _actualizarVisibilidadChat();
+  window.addEventListener('hashchange', _actualizarVisibilidadChat);
 
   // Ventana del chat
   const ventana = document.createElement('div');
