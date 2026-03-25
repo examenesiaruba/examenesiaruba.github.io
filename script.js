@@ -222,6 +222,11 @@ if (typeof preguntasPorSeccion === 'undefined') {
       }
     }
     currentSection = seccionId;
+    // Ocultar botón flotante en páginas de cuestionario
+    const _btnFloat = document.getElementById("btn-ver-progreso");
+    if (_btnFloat) _btnFloat.style.display = "none";
+    const _panelFloat = document.getElementById("panel-progreso");
+    if (_panelFloat) _panelFloat.style.display = "none";
     document.getElementById("menu-principal")?.classList.add("oculto");
     const _pb = document.getElementById('buscador-preguntas');
     if (_pb) _pb.classList.add('oculto');
@@ -311,6 +316,13 @@ if (typeof preguntasPorSeccion === 'undefined') {
   }
 
   function showMenu() {
+    // Mostrar botón flotante solo en menú principal
+    const _btnFloat = document.getElementById("btn-ver-progreso");
+    if (_btnFloat) _btnFloat.style.display = "";
+    // Cerrar panel de progreso si estaba abierto
+    const _panelFloat = document.getElementById("panel-progreso");
+    if (_panelFloat) _panelFloat.style.display = "none";
+
     // Detener el temporizador si estábamos en el simulacro
     if (currentSection === 'simulador') {
       detenerTemporizador();
@@ -1574,11 +1586,12 @@ if (typeof preguntasPorSeccion === 'undefined') {
   ];
 
   // ── Helper: detectar si hay respuestas marcadas en la sección actual ──
+  // Lee siempre desde localStorage para capturar lo escrito por script_onebyone.js
   function hayRespuestasMarcadas(seccionId) {
     if (!seccionId) return false;
-    const s = state[seccionId];
-    if (!s || s.totalShown) return false; // ya terminó, no pedir confirmación
-    return s.graded && Object.keys(s.graded).some(k => s.graded[k]);
+    // Sincronizar state en memoria antes de evaluar
+    _sincronizarStateDesdeStorage(seccionId);
+    return _hayProgresoEnStorage(seccionId);
   }
 
   // ── Diálogo de confirmación profesional para salir de un cuestionario en curso ──
@@ -1655,6 +1668,11 @@ if (typeof preguntasPorSeccion === 'undefined') {
   window.mostrarSubmenu = function (submenuId) {
     saveScrollPosition();
     saveLastSection(submenuId);  // Al volver al menú principal, resaltar el ítem del submenú
+    // Ocultar botón flotante de progreso en submenús
+    const _btnF = document.getElementById("btn-ver-progreso");
+    if (_btnF) _btnF.style.display = "none";
+    const _panF = document.getElementById("panel-progreso");
+    if (_panF) _panF.style.display = "none";
     // Ocultar el menú principal
     document.getElementById("menu-principal")?.classList.add("oculto");
     // Ocultar todos los submenús y cuestionarios
@@ -1771,6 +1789,11 @@ if (typeof preguntasPorSeccion === 'undefined') {
   window.mostrarRespuestasCorrectas = function() {
     // ── BLOQUEO DEMO: permite entrar al panel pero cada examen individual queda bloqueado ──
     // (el bloqueo por examen se hace en mostrarRespuestasExamen)
+    // Ocultar botón flotante de progreso
+    const _btnFR = document.getElementById("btn-ver-progreso");
+    if (_btnFR) _btnFR.style.display = "none";
+    const _panFR = document.getElementById("panel-progreso");
+    if (_panFR) _panFR.style.display = "none";
     // Ocultar todo lo demás
     document.getElementById('menu-principal')?.classList.add('oculto');
     document.querySelectorAll('.menu-principal[id$="-submenu"]').forEach(s => s.style.display = 'none');
@@ -2223,6 +2246,19 @@ if (typeof preguntasPorSeccion === 'undefined') {
   // (hook will be applied after DOMContentLoaded)
 
   // ======== Botón flotante "Ver mi progreso" ========
+  // Función para abrir/cerrar el panel de progreso (reutilizable desde botones inline)
+  window.togglePanelProgreso = function() {
+    const panel = document.getElementById("panel-progreso");
+    if (!panel) return;
+    if (panel.style.display === "block") {
+      panel.style.display = "none";
+    } else {
+      const content = document.getElementById("contenido-progreso");
+      if (content) renderProgress(content);
+      panel.style.display = "block";
+    }
+  };
+
   function buildProgressUI() {
     const btn = document.createElement("button");
     btn.id = "btn-ver-progreso";
@@ -2239,6 +2275,8 @@ if (typeof preguntasPorSeccion === 'undefined') {
     btn.style.fontWeight = "bold";
     btn.style.background = "#2ecc71";
     btn.style.color = "#fff";
+    // El botón flotante solo es visible en el menú principal
+    btn.style.display = "none";
     document.body.appendChild(btn);
 
     const panel = document.createElement("div");
@@ -2283,15 +2321,26 @@ if (typeof preguntasPorSeccion === 'undefined') {
     panel.appendChild(content);
     document.body.appendChild(panel);
 
-    btn.addEventListener("click", () => {
-      if (panel.style.display === "block") {
-        panel.style.display = "none";
-      } else {
-        renderProgress(content);
-        panel.style.display = "block";
-      }
-    });
+    btn.addEventListener("click", () => window.togglePanelProgreso());
     close.addEventListener("click", () => (panel.style.display = "none"));
+  }
+
+  // ======== Agregar botón estático "Ver mi progreso" en páginas de cuestionario ========
+  function insertarBotonesProgresoInline() {
+    document.querySelectorAll(".pagina-cuestionario").forEach(function(pagina) {
+      pagina.querySelectorAll("div").forEach(function(div) {
+        const reiniciar = div.querySelector(".btn-reiniciar");
+        if (!reiniciar) return;
+        if (div.querySelector(".btn-progreso-inline")) return;
+        const btnProgreso = document.createElement("button");
+        btnProgreso.className = "btn-reiniciar btn-progreso-inline";
+        btnProgreso.textContent = "📊 Ver mi progreso";
+        btnProgreso.addEventListener("click", function() {
+          window.togglePanelProgreso();
+        });
+        reiniciar.insertAdjacentElement("afterend", btnProgreso);
+      });
+    });
   }
 
   function renderProgress(container) {
@@ -2352,6 +2401,7 @@ if (typeof preguntasPorSeccion === 'undefined') {
   // ======== Inicio ========
   document.addEventListener("DOMContentLoaded", () => {
     buildProgressUI();
+    insertarBotonesProgresoInline();
     buildNavBar();
     setupBrowserNavigation();
     clearScrollPosition();
@@ -3363,6 +3413,11 @@ if (typeof preguntasPorSeccion === 'undefined') {
 
     // ── Abrir buscador ──
     window.mostrarBuscador = function () {
+        // Ocultar botón flotante de progreso en el buscador
+        var _btnFB = document.getElementById("btn-ver-progreso");
+        if (_btnFB) _btnFB.style.display = "none";
+        var _panFB = document.getElementById("panel-progreso");
+        if (_panFB) _panFB.style.display = "none";
         ocultarTodo();
         var panel = document.getElementById('buscador-preguntas');
         if (panel) panel.classList.remove('oculto');
