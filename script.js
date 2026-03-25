@@ -402,36 +402,38 @@ if (typeof preguntasPorSeccion === 'undefined') {
       // Borrar completamente → nueva aleatorización de preguntas y opciones al regenerar
       delete state[seccionId];
     } else {
-      // Conservar shuffleMap (orden de opciones) y unansweredOrder (orden de preguntas)
+      // Conservar TODO el progreso — solo congelar el shuffleMap para no re-mezclar opciones
       const shuffleMapGuardado = (s && s.shuffleMap)
         ? JSON.parse(JSON.stringify(s.shuffleMap))
         : {};
-      const answeredOrderGuardado = s && s.answeredOrder ? s.answeredOrder.slice() : [];
-      const unansweredOrderGuardado = s && s.unansweredOrder ? s.unansweredOrder.slice() : [];
 
       state[seccionId] = {
         shuffleFrozen: true,
         shuffleMap: shuffleMapGuardado,
-        answeredOrder: [],
-        // Restaurar todas las preguntas al orden no-respondido, preservando su secuencia
-        unansweredOrder: [...answeredOrderGuardado, ...unansweredOrderGuardado],
-        answers: {},
-        graded: {},
-        totalShown: false,
-        explanationShown: {}
+        answeredOrder: s ? (s.answeredOrder || []) : [],
+        unansweredOrder: s ? (s.unansweredOrder || []) : [],
+        answers: s ? (s.answers || {}) : {},
+        graded: s ? (s.graded || {}) : {},
+        totalShown: s ? (s.totalShown || false) : false,
+        explanationShown: s ? (s.explanationShown || {}) : {}
       };
     }
 
     saveJSON(STORAGE_KEY, state);
 
+    // Solo resetear puntajesPorSeccion si no hay respuestas guardadas
     if (window.puntajesPorSeccion && window.puntajesPorSeccion[seccionId]) {
-      window.puntajesPorSeccion[seccionId] = Array(
-        (preguntasPorSeccion[seccionId] || []).length
-      ).fill(null);
+      const hayGraded = state[seccionId] && Object.keys(state[seccionId].graded || {}).length > 0;
+      if (!hayGraded) {
+        window.puntajesPorSeccion[seccionId] = Array(
+          (preguntasPorSeccion[seccionId] || []).length
+        ).fill(null);
+      }
     }
 
+    // Solo limpiar el resultado visual si no hay respuestas guardadas
     const resultadoTotal = document.getElementById(`resultado-total-${seccionId}`);
-    if (resultadoTotal) {
+    if (resultadoTotal && !Object.keys((state[seccionId] || {}).graded || {}).length) {
       resultadoTotal.innerHTML = "";
       resultadoTotal.className = "resultado-final";
     }
@@ -2113,55 +2115,42 @@ if (typeof preguntasPorSeccion === 'undefined') {
   const _origShowMenu = showMenu;
   // (hook will be applied after DOMContentLoaded)
 
-  // ======== Botón flotante "Ver mi progreso" ========
+  // ======== "Ver mi progreso" — panel popup + botones inline junto a Reiniciar ========
   function buildProgressUI() {
-    const btn = document.createElement("button");
-    btn.id = "btn-ver-progreso";
-    btn.textContent = "Ver mi progreso";
-    btn.style.position = "fixed";
-    btn.style.right = "16px";
-    btn.style.bottom = "16px";
-    btn.style.zIndex = "1000";
-    btn.style.padding = "10px 14px";
-    btn.style.border = "none";
-    btn.style.borderRadius = "999px";
-    btn.style.boxShadow = "0 4px 12px rgba(0,0,0,.15)";
-    btn.style.cursor = "pointer";
-    btn.style.fontWeight = "bold";
-    btn.style.background = "#2ecc71";
-    btn.style.color = "#fff";
-    document.body.appendChild(btn);
-
+    // Crear el panel popup (sin botón flotante global)
     const panel = document.createElement("div");
     panel.id = "panel-progreso";
     panel.style.position = "fixed";
-    panel.style.right = "16px";
-    panel.style.bottom = "70px";
-    panel.style.width = "320px";
+    panel.style.top = "50%";
+    panel.style.left = "50%";
+    panel.style.transform = "translate(-50%, -50%)";
+    panel.style.width = "360px";
     panel.style.maxWidth = "92vw";
-    panel.style.maxHeight = "60vh";
+    panel.style.maxHeight = "70vh";
     panel.style.overflow = "auto";
     panel.style.background = "#fff";
     panel.style.border = "1px solid #dee2e6";
     panel.style.borderRadius = "12px";
-    panel.style.boxShadow = "0 8px 24px rgba(0,0,0,.2)";
-    panel.style.padding = "12px";
+    panel.style.boxShadow = "0 8px 32px rgba(0,0,0,.28)";
+    panel.style.padding = "16px";
     panel.style.display = "none";
-    panel.style.zIndex = "1001";
+    panel.style.zIndex = "10001";
 
     const header = document.createElement("div");
     header.style.display = "flex";
     header.style.justifyContent = "space-between";
     header.style.alignItems = "center";
+    header.style.marginBottom = "8px";
     const title = document.createElement("strong");
-    title.textContent = "Historial de intentos";
+    title.textContent = "📊 Historial de intentos";
     const close = document.createElement("button");
-    close.textContent = "Cerrar";
+    close.textContent = "✕ Cerrar";
     close.style.border = "none";
     close.style.background = "#e0e0e0";
     close.style.borderRadius = "8px";
     close.style.padding = "6px 10px";
     close.style.cursor = "pointer";
+    close.style.fontWeight = "600";
     header.appendChild(title);
     header.appendChild(close);
 
@@ -2174,15 +2163,35 @@ if (typeof preguntasPorSeccion === 'undefined') {
     panel.appendChild(content);
     document.body.appendChild(panel);
 
-    btn.addEventListener("click", () => {
-      if (panel.style.display === "block") {
-        panel.style.display = "none";
-      } else {
-        renderProgress(content);
-        panel.style.display = "block";
-      }
+    // Overlay de fondo para cerrar al hacer click afuera
+    const overlay = document.createElement("div");
+    overlay.id = "panel-progreso-overlay";
+    overlay.style.cssText = "display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.35);z-index:10000;";
+    document.body.appendChild(overlay);
+
+    const cerrarPanel = () => {
+      panel.style.display = "none";
+      overlay.style.display = "none";
+    };
+
+    close.addEventListener("click", cerrarPanel);
+    overlay.addEventListener("click", cerrarPanel);
+
+    // Función global para abrir el panel desde cualquier botón inline
+    window.abrirProgreso = function() {
+      renderProgress(content);
+      overlay.style.display = "block";
+      panel.style.display = "block";
+    };
+
+    // Inyectar botón "📊 Mi progreso" junto a cada btn-reiniciar (una sola vez al cargar)
+    document.querySelectorAll(".btn-reiniciar").forEach(btnReiniciar => {
+      const btnProg = document.createElement("button");
+      btnProg.className = "btn-reiniciar btn-progreso-inline";
+      btnProg.textContent = "📊 Mi progreso";
+      btnProg.onclick = window.abrirProgreso;
+      btnReiniciar.insertAdjacentElement("afterend", btnProg);
     });
-    close.addEventListener("click", () => (panel.style.display = "none"));
   }
 
   function renderProgress(container) {
