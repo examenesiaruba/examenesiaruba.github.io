@@ -223,6 +223,8 @@ if (typeof preguntasPorSeccion === 'undefined') {
     }
     currentSection = seccionId;
     document.getElementById("menu-principal")?.classList.add("oculto");
+    // Notificar al chat que salimos del menú
+    if (typeof window.chatMostrarEnMenu === 'function') window.chatMostrarEnMenu(false);
     const _pb = document.getElementById('buscador-preguntas');
     if (_pb) _pb.classList.add('oculto');
     document.querySelectorAll(".menu-principal[id$='-submenu']").forEach(s => s.style.display = "none");
@@ -388,6 +390,9 @@ if (typeof preguntasPorSeccion === 'undefined') {
     document.getElementById("menu-principal")?.classList.remove("oculto");
 
     restoreScrollPosition();
+
+    // Notificar al chat que estamos en el menú principal
+    if (typeof window.chatMostrarEnMenu === 'function') window.chatMostrarEnMenu(true);
   }
 
   let lastShuffleTemp = {};
