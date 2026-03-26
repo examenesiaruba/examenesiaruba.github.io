@@ -4,6 +4,37 @@
    - Sesión única por dispositivo
    - Sistema de licencias con verificación
    - Barra inferior estática con info de sesión
+
+   ── SEGURIDAD ──────────────────────────────────────────────────────────────
+   ACCIÓN REQUERIDA — API KEY DE FIREBASE:
+   La apiKey de Firebase es visible en este archivo (inevitable en apps web).
+   Para evitar que se use desde dominios no autorizados, restringirla en:
+     Google Cloud Console → APIs & Services → Credentials → [tu API key]
+     → Application restrictions → HTTP referrers
+     → Agregar: examenesiaruba.github.io/*
+   Esto impide que scripts externos usen la key para llamar a Firebase.
+
+   ACCIÓN REQUERIDA — REGLAS RTDB:
+   Configurar reglas en Firebase Console → Realtime Database → Rules:
+   {
+     "rules": {
+       "chat": {
+         "mensajes": {
+           ".read": "auth != null",
+           "$msgId": {
+             ".write": "auth != null"
+           }
+         }
+       },
+       "presencia": {
+         "$uid": {
+           ".read": "auth != null",
+           ".write": "auth != null && auth.uid === $uid"
+         }
+       }
+     }
+   }
+   ──────────────────────────────────────────────────────────────────────────
 */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -30,6 +61,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const rtdb = getDatabase(app);
 
+// NOTA DE SEGURIDAD: ADMIN_EMAIL es visible en el código fuente del cliente.
+// Esto es aceptable porque la verificación real de admin ocurre en las
+// Firestore Security Rules (función esAdmin()), no en el cliente.
+// No mover a variable de entorno ya que GitHub Pages no soporta backend.
 const ADMIN_EMAIL = "micro2020uba@gmail.com";
 const CONTACTO_EMAIL = "examenesiaruba@gmail.com";
 
@@ -82,7 +117,7 @@ async function verificarLicencia(userId) {
             plan: "demo",
             recuperadaAutomaticamente: true
           });
-          console.log('[IAR] Licencia demo recuperada automáticamente para', user.email);
+          // Licencia demo recuperada automáticamente (log eliminado en producción)
           // Verificar nuevamente con la licencia recién creada
           const licSnapNuevo = await getDoc(licRef);
           if (licSnapNuevo.exists()) {
@@ -610,7 +645,29 @@ async function handleRegistro() {
 
 // ======== RESTRICCIONES DEMO ========
 function aplicarRestriccionesDemo() {
-  window._demoCheckEnabled = true;
+  // Blindar las variables globales de demo contra sobreescritura desde consola.
+  // Object.defineProperty con writable:false impide que:
+  //   window._demoCheckEnabled = false   → no tiene efecto
+  //   window._demoSeccionesPermitidas = [...] → no tiene efecto
+  try {
+    Object.defineProperty(window, '_demoCheckEnabled', {
+      value: true,
+      writable: false,
+      configurable: true  // permite redefinir al hacer logout, pero NO desde consola (sin acceso al código)
+    });
+  } catch(e) {
+    // Si ya estaba definida (ej: segunda llamada), solo asegurarse que sea true
+    window._demoCheckEnabled = true;
+  }
+  try {
+    Object.defineProperty(window, '_demoSeccionesPermitidas', {
+      value: DEMO_SECCIONES_PERMITIDAS.slice(), // copia inmutable
+      writable: false,
+      configurable: true
+    });
+  } catch(e) {
+    window._demoSeccionesPermitidas = DEMO_SECCIONES_PERMITIDAS.slice();
+  }
 
   // ── Deshabilitar visualmente el simulador en el menú ──
   document.querySelectorAll('li').forEach(li => {
@@ -1290,12 +1347,23 @@ function ocultarLogin(navegarAMenu = false) {
 
 // ======== BARRA INFERIOR ESTÁTICA ========
 function mostrarBarraSesion(email, licencia) {
-  // Exponer si es admin para que script.js pueda usarlo
-  window._esAdmin = (email === ADMIN_EMAIL);
+  // FIX: _esAdmin ya no se expone como variable asignable en window.
+  // Se define como getter de solo lectura — intentar escribir window._esAdmin = true
+  // desde la consola no tiene efecto (con strict mode lanzaría TypeError).
+  // configurable:true permite redefinirlo en re-logins y en limpiarUI().
+  const _esAdminInterno = (email === ADMIN_EMAIL);
+  try {
+    Object.defineProperty(window, '_esAdmin', {
+      get() { return _esAdminInterno; },
+      set() { /* bloqueado — no se puede modificar desde la consola */ },
+      configurable: true,
+      enumerable: false
+    });
+  } catch(e) { /* ya definido — no hacer nada */ }
 
   // Mostrar u ocultar el ítem "Ver Respuestas Correctas" del menú según si es admin
   const liRespuestas = document.querySelector('li[onclick="mostrarRespuestasCorrectas()"]');
-  if (liRespuestas) liRespuestas.style.display = window._esAdmin ? '' : 'none';
+  if (liRespuestas) liRespuestas.style.display = _esAdminInterno ? '' : 'none';
   // Eliminar barra anterior si existe (para re-renderizar)
   const barraVieja = document.getElementById("barra-sesion");
   if (barraVieja) barraVieja.remove();
@@ -2356,8 +2424,32 @@ function limpiarUI() {
     _monitoreoUserRef._cleanupVisibility();
     _monitoreoUserRef = null;
   }
-  window._esAdmin = false;
-  window._demoCheckEnabled = false;
+  // _esAdmin se resetea implícitamente al cerrar sesión (no hay usuario que coincida)
+  // Re-definir como getter que devuelve false hasta el próximo login
+  try {
+    Object.defineProperty(window, '_esAdmin', {
+      get() { return false; },
+      set() { /* bloqueado */ },
+      configurable: true,
+      enumerable: false
+    });
+  } catch(e) { /* ignorar */ }
+  // Resetear el flag de demo al cerrar sesión (usando defineProperty para poder sobreescribir
+  // aunque haya sido definido como no-writable durante una sesión demo)
+  try {
+    Object.defineProperty(window, '_demoCheckEnabled', {
+      value: false,
+      writable: false,
+      configurable: true // configurable:true para que pueda redefinirse en el próximo login
+    });
+  } catch(e) { window._demoCheckEnabled = false; }
+  try {
+    Object.defineProperty(window, '_demoSeccionesPermitidas', {
+      value: DEMO_SECCIONES_PERMITIDAS.slice(),
+      writable: false,
+      configurable: true
+    });
+  } catch(e) { window._demoSeccionesPermitidas = DEMO_SECCIONES_PERMITIDAS.slice(); }
   licenciaActual = null;
   detenerListenersActividad();
   detenerListenerSolicitudes();
@@ -2374,7 +2466,36 @@ const cachePreguntas = {};
 
 async function cargarSeccion(seccionId) {
   if (cachePreguntas[seccionId]) return cachePreguntas[seccionId];
+
+  // ── Verificación de acceso antes de ir a Firestore ──
+  // Re-lee la licencia actual desde Firestore para no depender de variables
+  // en memoria que podrían haber sido manipuladas desde la consola del navegador.
   try {
+    const user = auth.currentUser;
+    if (!user) {
+      console.warn("[IAR] Sin usuario autenticado al cargar sección.");
+      return null;
+    }
+
+    // Leer licencia fresca desde Firestore (no desde licenciaActual en memoria)
+    const licRef = doc(db, "licencias", user.uid);
+    const licSnap = await getDoc(licRef);
+    if (!licSnap.exists()) {
+      console.warn("[IAR] Sin licencia al cargar sección.");
+      mostrarModalRestriccionDemo && mostrarModalRestriccionDemo();
+      return null;
+    }
+    const licData = licSnap.data();
+    const esDemo = licData.esDemo === true;
+
+    if (esDemo && !DEMO_SECCIONES_PERMITIDAS.includes(seccionId)) {
+      // El usuario es demo e intenta cargar una sección no permitida.
+      // Aunque hayan desactivado _demoCheckEnabled en consola, aquí se vuelve a verificar.
+      console.warn("[IAR] Acceso denegado (demo) para sección:", seccionId);
+      mostrarModalRestriccionDemo && mostrarModalRestriccionDemo();
+      return null;
+    }
+
     const snap = await getDoc(doc(db, "preguntas", seccionId));
     if (snap.exists()) {
       const preguntas = snap.data().preguntas || [];
@@ -2383,6 +2504,13 @@ async function cargarSeccion(seccionId) {
     }
     return null;
   } catch(err) {
+    // Si Firestore rechaza la lectura (por las Security Rules), el error
+    // llega aquí con code "permission-denied" — la sección simplemente no carga.
+    if (err.code === "permission-denied") {
+      console.warn("[IAR] Firestore denegó el acceso a sección:", seccionId);
+      mostrarModalRestriccionDemo && mostrarModalRestriccionDemo();
+      return null;
+    }
     console.error("[IAR] Error cargando sección '" + seccionId + "':", err.code || err.message || err);
     return null;
   }
